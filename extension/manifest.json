@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "LMS AI Copilot",
+  "version": "0.1.0",
+  "description": "HUFS e-Class AI 학습 도우미",
+  "permissions": ["cookies", "storage"],
+  "host_permissions": [
+    "https://eclass.hufs.ac.kr/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://eclass.hufs.ac.kr/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "panel.css", "panel.js"],
+      "matches": ["https://eclass.hufs.ac.kr/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

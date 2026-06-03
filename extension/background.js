@@ -1,0 +1,105 @@
+const API = "http://localhost:8000";
+
+async function getSessionCookie() {
+  const cookie = await chrome.cookies.get({
+    url: "https://eclass.hufs.ac.kr",
+    name: "JSESSIONID",
+  });
+  return cookie?.value ?? null;
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "GET_COOKIE") {
+    getSessionCookie().then((cookie) => sendResponse({ cookie }));
+    return true;
+  }
+
+  if (msg.type === "SYNC") {
+    (async () => {
+      const cookie = await getSessionCookie();
+      if (!cookie) return sendResponse({ ok: false, error: "쿠키 없음" });
+
+      const { lms_id } = await chrome.storage.local.get("lms_id");
+      const res = await fetch(`${API}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lms_id: lms_id ?? "",
+          cookie_str: `JSESSIONID=${cookie}`,
+        }),
+      });
+
+      if (!res.ok) return sendResponse({ ok: false, error: await res.text() });
+      const data = await res.json();
+      await chrome.storage.local.set({ user_id: data.user_id });
+      sendResponse({ ok: true, data });
+    })();
+    return true;
+  }
+
+  if (msg.type === "GET_COURSES") {
+    (async () => {
+      const { user_id } = await chrome.storage.local.get("user_id");
+      if (!user_id) return sendResponse({ ok: false, error: "동기화 필요" });
+
+      // TODO: GET /courses?user_id=X 구현되면 여기서 호출
+      // const res = await fetch(`${API}/courses?user_id=${user_id}`);
+      // const data = await res.json();
+      // await chrome.storage.local.set({ course_map: data });
+      // sendResponse({ ok: true, data });
+
+      const { course_map } = await chrome.storage.local.get("course_map");
+      sendResponse({ ok: true, data: course_map ?? {} });
+    })();
+    return true;
+  }
+
+  if (msg.type === "CHAT") {
+    (async () => {
+      const { user_id, sessions } = await chrome.storage.local.get([
+        "user_id",
+        "sessions",
+      ]);
+      if (!user_id) return sendResponse({ ok: false, error: "동기화 필요" });
+
+      const res = await fetch(`${API}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id,
+          course_id: msg.course_id ?? null,
+          question: msg.question,
+        }),
+      });
+
+      if (!res.ok) return sendResponse({ ok: false, error: await res.text() });
+      const data = await res.json();
+
+      const updated = { ...(sessions ?? {}) };
+      if (msg.course_id) updated[msg.course_id] = data.session_id;
+      await chrome.storage.local.set({ sessions: updated });
+
+      sendResponse({ ok: true, data });
+    })();
+    return true;
+  }
+
+  if (msg.type === "HISTORY") {
+    (async () => {
+      const res = await fetch(`${API}/chat/${msg.session_id}`);
+      if (!res.ok) return sendResponse({ ok: false });
+      sendResponse({ ok: true, data: await res.json() });
+    })();
+    return true;
+  }
+
+  if (msg.type === "FEEDBACK") {
+    fetch(`${API}/chat/${msg.chat_id}/feedback?score=${msg.score}`, {
+      method: "POST",
+    })
+      .then((r) => r.json())
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+});

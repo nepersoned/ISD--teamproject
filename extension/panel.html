@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LMS AI Copilot</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="app">
+
+    <header id="header">
+      <div id="header-left">
+        <span id="course-name">과목 미선택</span>
+      </div>
+      <div id="header-right">
+        <button id="btn-sync" title="LMS 동기화">동기화</button>
+        <button id="btn-hide" title="사이드바 닫기">×</button>
+      </div>
+    </header>
+
+    <div id="setup-banner" class="hidden">
+      <p>처음 사용 시 학번을 입력하고 동기화를 눌러주세요.</p>
+      <div id="setup-row">
+        <input id="input-lms-id" type="text" placeholder="학번 (예: 202501718)" />
+        <button id="btn-save-id">저장</button>
+      </div>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="input-area">
+      <input id="input" type="text" placeholder="강의 내용에 대해 질문하세요..." autocomplete="off" />
+      <button id="btn-send">전송</button>
+    </div>
+
+  </div>
+  <script src="panel.js"></script>
+</body>
+</html>
