@@ -103,6 +103,14 @@ document.getElementById("btn-sync").addEventListener("click", async () => {
   }
 
   state.userId = data.user_id;
+
+  // 과목 목록 가져와서 저장
+  const courseRes = await chrome.runtime.sendMessage({ type: "GET_COURSES" });
+  if (courseRes.ok && courseRes.data) {
+    state.courseMap = courseRes.data;
+    await chrome.storage.local.set({ course_map: courseRes.data });
+  }
+
   const now = Date.now();
   await chrome.storage.local.set({ last_sync_at: now });
   updateSyncLabel(now);

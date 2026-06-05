@@ -152,8 +152,7 @@ def search_chunks(course_id: int | None, keywords: str, limit: int = 8) -> list[
         if course_id:
             rows = conn.execute(
                 """
-                SELECT dc.chunk_id, dc.material_id, dc.page_ref,
-                       snippet(Doc_Chunk_fts, 0, '<b>', '</b>', '...', 20) AS snippet
+                SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
                 FROM Doc_Chunk_fts
                 JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
                 JOIN Material  m  ON m.material_id = dc.material_id
@@ -165,8 +164,7 @@ def search_chunks(course_id: int | None, keywords: str, limit: int = 8) -> list[
         else:
             rows = conn.execute(
                 """
-                SELECT dc.chunk_id, dc.material_id, dc.page_ref,
-                       snippet(Doc_Chunk_fts, 0, '<b>', '</b>', '...', 20) AS snippet
+                SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
                 FROM Doc_Chunk_fts
                 JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
                 WHERE Doc_Chunk_fts MATCH ?
