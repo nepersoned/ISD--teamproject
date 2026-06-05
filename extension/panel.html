@@ -11,27 +11,47 @@
 
     <header id="header">
       <div id="header-left">
+        <span id="logo-dot"></span>
         <span id="course-name">과목 미선택</span>
       </div>
       <div id="header-right">
         <button id="btn-sync" title="LMS 동기화">동기화</button>
-        <button id="btn-hide" title="사이드바 닫기">×</button>
+        <button id="btn-hide" title="사이드바 닫기">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
     </header>
 
     <div id="setup-banner" class="hidden">
-      <p>처음 사용 시 학번을 입력하고 동기화를 눌러주세요.</p>
+      <p>학번을 입력하고 동기화를 눌러주세요.<br><small>JSESSIONID는 자동으로 읽어요.</small></p>
       <div id="setup-row">
         <input id="input-lms-id" type="text" placeholder="학번 (예: 202501718)" />
         <button id="btn-save-id">저장</button>
       </div>
     </div>
 
-    <div id="messages"></div>
+    <div id="messages">
+      <div id="empty-state">
+        <p class="empty-title">무엇이든 물어보세요</p>
+        <p class="empty-desc">동기화된 강의자료를 기반으로<br>답변해드려요</p>
+        <div id="hints">
+          <button class="hint-chip">이번 주 과제 마감일이 언제야?</button>
+          <button class="hint-chip">강의 핵심 개념 요약해줘</button>
+          <button class="hint-chip">시험 범위 알려줘</button>
+        </div>
+      </div>
+    </div>
 
     <div id="input-area">
-      <input id="input" type="text" placeholder="강의 내용에 대해 질문하세요..." autocomplete="off" />
-      <button id="btn-send">전송</button>
+      <textarea id="input" placeholder="메시지를 입력하세요..." rows="1" autocomplete="off"></textarea>
+      <button id="btn-send">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
     </div>
 
   </div>

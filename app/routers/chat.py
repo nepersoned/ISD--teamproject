@@ -1,7 +1,7 @@
 import os
 import re
 import json
-import anthropic
+from openai import OpenAI
 from fastapi import APIRouter, HTTPException
 from app.schemas.chat import ChatRequest, ChatResponse
 from db.db import (
@@ -57,28 +57,28 @@ def chat(req: ChatRequest):
     history = get_chat_history(session_id)
     keywords = extract_keywords(req.question)
 
-    chunks = []
-    if req.course_id:
-        chunks = search_chunks(
-            course_id=req.course_id,
-            keywords=keywords,
-            limit=8
-        )
+    chunks = search_chunks(
+        course_id=req.course_id,
+        keywords=keywords,
+        limit=8
+    )
 
     course_title = get_course_title(req.course_id) if req.course_id else "your course"
     system, user_prompt = build_prompt(req.question, chunks, history, course_title)
 
     try:
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=1024,
-            system=system,
-            messages=[{"role": "user", "content": user_prompt}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ],
         )
-        answer_text = response.content[0].text
+        answer_text = response.choices[0].message.content
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Claude API error: {e}")
+        raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
 
     sources_list = [
         {"chunk_id": c["chunk_id"], "material_id": c["material_id"], "page_ref": c["page_ref"]}

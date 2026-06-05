@@ -1,10 +1,8 @@
 const API = "http://localhost:8000";
 
 async function getSessionCookie() {
-  const cookie = await chrome.cookies.get({
-    url: "https://eclass.hufs.ac.kr",
-    name: "JSESSIONID",
-  });
+  const cookies = await chrome.cookies.getAll({ name: "JSESSIONID" });
+  const cookie = cookies.find((c) => c.domain.includes("eclass.hufs.ac.kr"));
   return cookie?.value ?? null;
 }
 

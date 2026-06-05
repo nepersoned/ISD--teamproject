@@ -146,22 +146,34 @@ def chunks_exist(material_id: int) -> bool:
     return row is not None
 
 
-def search_chunks(course_id: int, keywords: str, limit: int = 8) -> list[dict]:
+def search_chunks(course_id: int | None, keywords: str, limit: int = 8) -> list[dict]:
     """FTS5 키워드 검색 — chunk_id · material_id · page_ref · snippet 반환."""
     with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT dc.chunk_id, dc.material_id, dc.page_ref,
-                   snippet(Doc_Chunk_fts, 0, '<b>', '</b>', '...', 20) AS snippet
-            FROM Doc_Chunk_fts
-            JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
-            JOIN Material  m  ON m.material_id = dc.material_id
-            WHERE m.course_id = ? AND Doc_Chunk_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-            """,
-            (course_id, keywords, limit),
-        ).fetchall()
+        if course_id:
+            rows = conn.execute(
+                """
+                SELECT dc.chunk_id, dc.material_id, dc.page_ref,
+                       snippet(Doc_Chunk_fts, 0, '<b>', '</b>', '...', 20) AS snippet
+                FROM Doc_Chunk_fts
+                JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
+                JOIN Material  m  ON m.material_id = dc.material_id
+                WHERE m.course_id = ? AND Doc_Chunk_fts MATCH ?
+                ORDER BY rank LIMIT ?
+                """,
+                (course_id, keywords, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT dc.chunk_id, dc.material_id, dc.page_ref,
+                       snippet(Doc_Chunk_fts, 0, '<b>', '</b>', '...', 20) AS snippet
+                FROM Doc_Chunk_fts
+                JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
+                WHERE Doc_Chunk_fts MATCH ?
+                ORDER BY rank LIMIT ?
+                """,
+                (keywords, limit),
+            ).fetchall()
     return [dict(r) for r in rows]
 
 
