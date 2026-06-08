@@ -80,11 +80,11 @@ def get_course_title(course_id: int) -> str:
 def build_prompt(query, chunks, history, course_title, activities=None):
     today = date.today().isoformat()
     system = (
-        f"당신은 '{course_title}' 강의 튜터입니다. "
-        f"오늘 날짜는 {today}입니다. "
+        f"당신은 강의 튜터입니다. 오늘 날짜는 {today}입니다. "
         f"반드시 아래에 제공된 강의자료와 과제/활동 정보만을 근거로 한국어로 답변하세요. "
-        f"과제/활동 목록이 제공된 경우, 날짜나 상태로 필터링하지 말고 전체 목록을 보여주세요. "
-        f"상태가 'unknown'이면 그대로 '확인 불가'로 표시하세요. "
+        f"과제/활동 목록이 제공된 경우: 질문에 특정 날짜가 언급되면 해당 날짜의 항목만, "
+        f"'이번 주'이면 {today} 기준 7일 이내 마감 항목만, '전체'이면 전부 나열하세요. "
+        f"상태가 'unknown'이면 '확인 불가'로 표시하세요. "
         f"제공된 자료에 없는 내용은 '해당 정보를 찾을 수 없습니다.'라고 답하세요. "
         f"외부 교재, 인터넷 자료, 일반 지식은 절대 언급하지 마세요. "
         f"강의자료 인용 시 출처 페이지 번호를 표시하세요."
@@ -97,10 +97,30 @@ def build_prompt(query, chunks, history, course_title, activities=None):
 
     activity_block = ""
     if activities:
-        lines = ["[과제/활동 목록]"]
+        from datetime import date as _date
+        _today = _date.today()
+        lines = ["[과제/활동 목록 — 오늘: " + today + "]"]
         for a in activities:
-            due = a['due_date'] or '마감일 없음'
-            lines.append(f"- [{a['course']}] {a['title']} | 마감: {due} | 상태: {a['status']}")
+            raw_due = a['due_date']
+            if raw_due:
+                try:
+                    d = _date.fromisoformat(raw_due)
+                    diff = (d - _today).days
+                    if diff < 0:
+                        tag = f"마감 {abs(diff)}일 지남"
+                    elif diff == 0:
+                        tag = "오늘 마감"
+                    elif diff == 1:
+                        tag = "내일 마감 (D-1)"
+                    else:
+                        tag = f"D-{diff}"
+                except Exception:
+                    tag = ""
+                due_str = f"{raw_due} ({tag})"
+            else:
+                due_str = "마감일 없음"
+            status = "확인 불가" if a['status'] == "unknown" else a['status']
+            lines.append(f"- [{a['course']}] {a['title']} | 마감: {due_str} | 상태: {status}")
         activity_block = "\n".join(lines)
 
     history_block = "\n".join(
