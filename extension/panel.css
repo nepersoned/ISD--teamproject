@@ -63,13 +63,13 @@ body {
 #btn-sync:hover { background: rgba(108,142,247,0.25); color: #c4d2fd; }
 #btn-sync:disabled { opacity: 0.5; cursor: default; }
 
-#btn-hide {
+#btn-new-chat, #btn-hide {
   background: none; border: none; color: #4e5268;
   width: 28px; height: 28px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: 0.13s;
 }
-#btn-hide:hover { background: rgba(255,255,255,0.08); color: #9ea5b5; }
+#btn-new-chat:hover, #btn-hide:hover { background: rgba(255,255,255,0.08); color: #9ea5b5; }
 
 /* ── 설정 배너 ── */
 #setup-banner {
@@ -215,5 +215,13 @@ body {
 }
 #btn-send:hover { background: var(--accent-dark); }
 #btn-send:disabled { opacity: 0.3; cursor: default; }
+
+/* ── 마크다운 렌더링 ── */
+.msg-body p { margin: 0 0 6px; }
+.msg-body p:last-child { margin-bottom: 0; }
+.msg-body ul { margin: 4px 0 6px 16px; padding: 0; }
+.msg-body li { margin-bottom: 3px; line-height: 1.55; }
+.msg-body strong { font-weight: 600; }
+.msg-body em { font-style: italic; }
 
 .hidden { display: none !important; }

@@ -232,6 +232,7 @@ class EClassScraper:
         for kind, path in [
             ("assignment", "/ilos/st/course/report_list_form.acl"),
             ("quiz",       "/ilos/st/course/test_list_form.acl"),
+            ("online",     "/ilos/st/course/econtents_list_form.acl"),
         ]:
             try:
                 resp = self.session.get(BASE_URL + path, timeout=15)
@@ -278,10 +279,12 @@ class EClassScraper:
         soup = BeautifulSoup(resp.content, "lxml")
 
         KIND_MAP = {
-            "강의자료": "material",
-            "과제":    "activity",
-            "시험":    "activity",
-            "퀴즈":    "activity",
+            "강의자료":  "material",
+            "과제":     "activity",
+            "시험":     "activity",
+            "퀴즈":     "activity",
+            "온라인강의": "activity",
+            "팀프로젝트": "activity",
         }
 
         notifications = []

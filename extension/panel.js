@@ -71,6 +71,29 @@ document.getElementById("btn-hide").addEventListener("click", () => {
   window.parent.postMessage({ type: "TOGGLE_SIDEBAR" }, "*");
 });
 
+// ── 새 채팅 ───────────────────────────────────────────
+document.getElementById("btn-new-chat").addEventListener("click", async () => {
+  state.sessionId = null;
+  state.messages = [];
+  await chrome.storage.local.remove(["session_id", "messages"]);
+
+  const msgs = document.getElementById("messages");
+  msgs.innerHTML = `
+    <div id="empty-state">
+      <p class="empty-title">무엇이든 물어보세요</p>
+      <p class="empty-desc">동기화된 강의자료를 기반으로<br>답변해드려요</p>
+      <div id="hints">
+        <button class="hint-chip">이번 주 과제 마감일이 언제야?</button>
+        <button class="hint-chip">강의 핵심 개념 요약해줘</button>
+        <button class="hint-chip">시험 범위 알려줘</button>
+      </div>
+    </div>`;
+
+  document.querySelectorAll(".hint-chip").forEach((chip) => {
+    chip.addEventListener("click", () => sendMessage(chip.textContent));
+  });
+});
+
 // ── URL 변경 수신 ─────────────────────────────────────
 window.addEventListener("message", (e) => {
   if (e.data?.type !== "URL_CHANGED") return;
@@ -226,6 +249,20 @@ function appendTyping() {
   return wrap;
 }
 
+function renderMarkdown(text) {
+  return text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/^### (.+)$/gm, "<strong>$1</strong>")
+    .replace(/^## (.+)$/gm, "<strong>$1</strong>")
+    .replace(/^# (.+)$/gm, "<strong>$1</strong>")
+    .replace(/^[-*] (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
+    .replace(/\n{2,}/g, "</p><p>")
+    .replace(/\n/g, "<br>");
+}
+
 function renderAssistantMessage(chatId, text, sources) {
   const wrap = document.createElement("div");
   wrap.style.cssText = "display:flex; flex-direction:column; align-items:flex-start; gap:4px;";
@@ -238,8 +275,9 @@ function renderAssistantMessage(chatId, text, sources) {
   const el = document.createElement("div");
   el.className = "msg assistant";
 
-  const textEl = document.createElement("p");
-  textEl.textContent = text;
+  const textEl = document.createElement("div");
+  textEl.className = "msg-body";
+  textEl.innerHTML = "<p>" + renderMarkdown(text) + "</p>";
   el.appendChild(textEl);
 
   if (sources.length > 0) {
