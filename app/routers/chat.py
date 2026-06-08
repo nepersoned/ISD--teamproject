@@ -44,10 +44,14 @@ def get_activities(user_id: int, course_id: int = None) -> list[dict]:
 router = APIRouter()
 
 
+SMALL_MODEL = "llama-3.1-8b-instant"   # 키워드 추출용 (토큰 절약)
+LARGE_MODEL = "llama-3.3-70b-versatile" # 답변용
+
+
 def extract_keywords(client: Groq, question: str) -> str:
     try:
         res = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=SMALL_MODEL,
             max_tokens=20,
             messages=[{
                 "role": "user",
@@ -159,18 +163,24 @@ def chat(req: ChatRequest):
     course_title = get_course_title(req.course_id) if req.course_id else "수강 과목"
     system, user_prompt = build_prompt(req.question, chunks, history, course_title, activities)
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=2048,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        answer_text = response.choices[0].message.content
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Groq API error: {e}")
+    for model in [LARGE_MODEL, SMALL_MODEL]:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                max_tokens=1024,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            answer_text = response.choices[0].message.content
+            break
+        except Exception as e:
+            if "429" in str(e) and model == LARGE_MODEL:
+                continue  # 70B 한도 초과 시 8B로 재시도
+            raise HTTPException(status_code=500, detail=f"Groq API error: {e}")
+    else:
+        raise HTTPException(status_code=503, detail="Groq 일일 한도 초과. 잠시 후 다시 시도하세요.")
 
     # 과제 관련 답변이면 강의자료 출처 표시 안 함
     sources_list = [] if activities else [
