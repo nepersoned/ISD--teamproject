@@ -1,10 +1,8 @@
 const API = "http://localhost:8000";
 
 async function getSessionCookie() {
-  const cookie = await chrome.cookies.get({
-    url: "https://eclass.hufs.ac.kr",
-    name: "JSESSIONID",
-  });
+  const cookies = await chrome.cookies.getAll({ name: "JSESSIONID" });
+  const cookie = cookies.find((c) => c.domain.includes("eclass.hufs.ac.kr"));
   return cookie?.value ?? null;
 }
 
@@ -42,14 +40,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const { user_id } = await chrome.storage.local.get("user_id");
       if (!user_id) return sendResponse({ ok: false, error: "동기화 필요" });
 
-      // TODO: GET /courses?user_id=X 구현되면 여기서 호출
-      // const res = await fetch(`${API}/courses?user_id=${user_id}`);
-      // const data = await res.json();
-      // await chrome.storage.local.set({ course_map: data });
-      // sendResponse({ ok: true, data });
-
-      const { course_map } = await chrome.storage.local.get("course_map");
-      sendResponse({ ok: true, data: course_map ?? {} });
+      const res = await fetch(`${API}/courses?user_id=${user_id}`);
+      if (!res.ok) return sendResponse({ ok: false, error: await res.text() });
+      const data = await res.json();
+      await chrome.storage.local.set({ course_map: data });
+      sendResponse({ ok: true, data });
     })();
     return true;
   }

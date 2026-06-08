@@ -1,21 +1,60 @@
 // ── 상태 ──────────────────────────────────────────────
 const state = {
   userId: null,
-  courseUrlId: null,   // URL에서 추출한 lms_url_id (e.g. "A20261T0530120101")
-  courseId: null,      // DB의 정수형 course_id
+  courseUrlId: null,
+  courseId: null,
   courseName: "과목 미선택",
   sessionId: null,
-  courseMap: {},       // { lms_url_id: { course_id, title } }
+  courseMap: {},
+  messages: [], // 대화 내용 메모리 캐시
 };
+
+// ── 상대 시간 표시 ─────────────────────────────────────
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return "방금 동기화";
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전 동기화`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전 동기화`;
+  return `${Math.floor(diff / 86400)}일 전 동기화`;
+}
+
+function updateSyncLabel(ts) {
+  const btn = document.getElementById("btn-sync");
+  btn.textContent = timeAgo(ts);
+}
 
 // ── 초기화 ────────────────────────────────────────────
 (async () => {
-  const stored = await chrome.storage.local.get(["user_id", "lms_id", "course_map"]);
+  const stored = await chrome.storage.local.get([
+    "user_id", "lms_id", "course_map", "last_sync_at", "messages", "session_id"
+  ]);
+
   state.userId = stored.user_id ?? null;
   state.courseMap = stored.course_map ?? {};
+  state.sessionId = stored.session_id ?? null;
 
+  // 동기화 버튼 초기 상태
+  if (stored.last_sync_at) {
+    updateSyncLabel(stored.last_sync_at);
+    setInterval(() => updateSyncLabel(stored.last_sync_at), 60000);
+  }
+
+  // 저장된 학번 없으면 배너 표시
   if (!stored.lms_id) {
     document.getElementById("setup-banner").classList.remove("hidden");
+  }
+
+  // 저장된 대화 복원
+  if (stored.messages && stored.messages.length > 0) {
+    state.messages = stored.messages;
+    hideEmptyState();
+    stored.messages.forEach((msg) => {
+      if (msg.role === "user") {
+        renderMessage("user", msg.content);
+      } else {
+        renderAssistantMessage(msg.chatId, msg.content, msg.sources ?? []);
+      }
+    });
   }
 })();
 
@@ -27,12 +66,12 @@ document.getElementById("btn-save-id").addEventListener("click", async () => {
   document.getElementById("setup-banner").classList.add("hidden");
 });
 
-// ── 사이드바 닫기 ──────────────────────────────────────
+// ── 닫기 ──────────────────────────────────────────────
 document.getElementById("btn-hide").addEventListener("click", () => {
   window.parent.postMessage({ type: "TOGGLE_SIDEBAR" }, "*");
 });
 
-// ── URL 변경 수신 (content.js → panel) ───────────────
+// ── URL 변경 수신 ─────────────────────────────────────
 window.addEventListener("message", (e) => {
   if (e.data?.type !== "URL_CHANGED") return;
   state.courseUrlId = e.data.courseUrlId;
@@ -46,7 +85,6 @@ window.addEventListener("message", (e) => {
     state.courseName = state.courseUrlId ? "동기화 필요" : "과목 미선택";
   }
   document.getElementById("course-name").textContent = state.courseName;
-  state.sessionId = null;
 });
 
 // ── 동기화 ────────────────────────────────────────────
@@ -58,7 +96,7 @@ document.getElementById("btn-sync").addEventListener("click", async () => {
   const { ok, error, data } = await chrome.runtime.sendMessage({ type: "SYNC" });
 
   if (!ok) {
-    alert(error ?? "동기화 실패. e-Class 로그인 상태를 확인하세요.");
+    alert(error ?? "동기화 실패. e-Class에 로그인되어 있는지 확인하세요.");
     btn.textContent = "동기화";
     btn.disabled = false;
     return;
@@ -66,61 +104,76 @@ document.getElementById("btn-sync").addEventListener("click", async () => {
 
   state.userId = data.user_id;
 
-  // TODO: GET /courses?user_id=X 백엔드 구현 후 아래 주석 해제
-  // const courseRes = await chrome.runtime.sendMessage({ type: "GET_COURSES" });
-  // if (courseRes.ok) {
-  //   state.courseMap = courseRes.data;
-  //   // URL_CHANGED 재처리로 과목명 갱신
-  //   if (state.courseUrlId && state.courseMap[state.courseUrlId]) {
-  //     const c = state.courseMap[state.courseUrlId];
-  //     state.courseId = c.course_id;
-  //     state.courseName = c.title;
-  //     document.getElementById("course-name").textContent = state.courseName;
-  //   }
-  // }
+  // 과목 목록 가져와서 저장
+  const courseRes = await chrome.runtime.sendMessage({ type: "GET_COURSES" });
+  if (courseRes.ok && courseRes.data) {
+    state.courseMap = courseRes.data;
+    await chrome.storage.local.set({ course_map: courseRes.data });
+  }
 
-  btn.textContent = `완료 (${data.courses}개 과목)`;
-  setTimeout(() => {
-    btn.textContent = "동기화";
-    btn.disabled = false;
-  }, 2000);
+  const now = Date.now();
+  await chrome.storage.local.set({ last_sync_at: now });
+  updateSyncLabel(now);
+  setInterval(() => updateSyncLabel(now), 60000);
+  btn.disabled = false;
+});
+
+// ── 힌트 칩 ──────────────────────────────────────────
+document.querySelectorAll(".hint-chip").forEach((chip) => {
+  chip.addEventListener("click", () => sendMessage(chip.textContent));
 });
 
 // ── 채팅 전송 ─────────────────────────────────────────
-document.getElementById("btn-send").addEventListener("click", sendMessage);
-document.getElementById("input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) sendMessage();
+document.getElementById("btn-send").addEventListener("click", () => sendMessage());
+
+const inputEl = document.getElementById("input");
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+inputEl.addEventListener("input", () => {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
 });
 
-async function sendMessage() {
-  const inputEl = document.getElementById("input");
-  const question = inputEl.value.trim();
-  if (!question) return;
+async function sendMessage(question) {
+  const q = (question ?? inputEl.value).trim();
+  if (!q) return;
 
   if (!state.userId) {
     alert("먼저 학번을 입력하고 동기화를 실행해주세요.");
     return;
   }
 
+  hideEmptyState();
   inputEl.value = "";
+  inputEl.style.height = "auto";
   document.getElementById("btn-send").disabled = true;
 
-  appendMessage("user", question);
+  renderMessage("user", q);
   const typingEl = appendTyping();
 
   const { ok, data, error } = await chrome.runtime.sendMessage({
-    type: "CHAT",
-    question,
-    course_id: state.courseId ?? null,
+    type: "CHAT", question: q, course_id: state.courseId ?? null,
   });
 
   typingEl.remove();
 
   if (!ok) {
-    appendMessage("assistant", `오류: ${error ?? "서버 연결 실패"}`);
+    renderMessage("assistant", `오류: ${error ?? "서버 연결 실패"}`);
   } else {
-    if (data.session_id) state.sessionId = data.session_id;
-    appendAssistantMessage(data.chat_id, data.answer, data.sources ?? []);
+    if (data.session_id) {
+      state.sessionId = data.session_id;
+      await chrome.storage.local.set({ session_id: data.session_id });
+    }
+    renderAssistantMessage(data.chat_id, data.answer, data.sources ?? []);
+
+    // 대화 내용 저장
+    state.messages.push({ role: "user", content: q });
+    state.messages.push({
+      role: "assistant", content: data.answer,
+      chatId: data.chat_id, sources: data.sources ?? []
+    });
+    await chrome.storage.local.set({ messages: state.messages });
   }
 
   document.getElementById("btn-send").disabled = false;
@@ -128,25 +181,60 @@ async function sendMessage() {
 }
 
 // ── DOM 헬퍼 ──────────────────────────────────────────
-function appendMessage(role, text) {
+function hideEmptyState() {
+  const el = document.getElementById("empty-state");
+  if (el) el.remove();
+}
+
+function renderMessage(role, text) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = `display:flex; flex-direction:column; align-items:${role === "user" ? "flex-end" : "flex-start"}; gap:4px;`;
+
+  if (role === "assistant") {
+    const label = document.createElement("span");
+    label.className = "msg-label";
+    label.textContent = "Copilot";
+    wrap.appendChild(label);
+  }
+
   const el = document.createElement("div");
   el.className = `msg ${role}`;
   el.textContent = text;
-  document.getElementById("messages").appendChild(el);
+  wrap.appendChild(el);
+
+  document.getElementById("messages").appendChild(wrap);
   scrollBottom();
-  return el;
+  return wrap;
 }
 
 function appendTyping() {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex; flex-direction:column; align-items:flex-start; gap:4px;";
+
+  const label = document.createElement("span");
+  label.className = "msg-label";
+  label.textContent = "Copilot";
+  wrap.appendChild(label);
+
   const el = document.createElement("div");
-  el.className = "msg assistant typing";
-  el.textContent = "답변 생성 중...";
-  document.getElementById("messages").appendChild(el);
+  el.className = "msg assistant";
+  el.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+  wrap.appendChild(el);
+
+  document.getElementById("messages").appendChild(wrap);
   scrollBottom();
-  return el;
+  return wrap;
 }
 
-function appendAssistantMessage(chatId, text, sources) {
+function renderAssistantMessage(chatId, text, sources) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex; flex-direction:column; align-items:flex-start; gap:4px;";
+
+  const label = document.createElement("span");
+  label.className = "msg-label";
+  label.textContent = "Copilot";
+  wrap.appendChild(label);
+
   const el = document.createElement("div");
   el.className = "msg assistant";
 
@@ -166,22 +254,22 @@ function appendAssistantMessage(chatId, text, sources) {
     el.appendChild(sourcesEl);
   }
 
-  const feedbackEl = document.createElement("div");
-  feedbackEl.className = "feedback";
+  if (chatId) {
+    const feedbackEl = document.createElement("div");
+    feedbackEl.className = "feedback";
+    const upBtn = document.createElement("button");
+    upBtn.textContent = "👍 도움됐어요";
+    const downBtn = document.createElement("button");
+    downBtn.textContent = "👎 별로에요";
+    upBtn.onclick = () => sendFeedback(chatId, 1, upBtn, downBtn);
+    downBtn.onclick = () => sendFeedback(chatId, -1, upBtn, downBtn);
+    feedbackEl.appendChild(upBtn);
+    feedbackEl.appendChild(downBtn);
+    el.appendChild(feedbackEl);
+  }
 
-  const upBtn = document.createElement("button");
-  upBtn.textContent = "좋아요";
-  const downBtn = document.createElement("button");
-  downBtn.textContent = "별로에요";
-
-  upBtn.onclick = () => sendFeedback(chatId, 1, upBtn, downBtn);
-  downBtn.onclick = () => sendFeedback(chatId, -1, upBtn, downBtn);
-
-  feedbackEl.appendChild(upBtn);
-  feedbackEl.appendChild(downBtn);
-  el.appendChild(feedbackEl);
-
-  document.getElementById("messages").appendChild(el);
+  wrap.appendChild(el);
+  document.getElementById("messages").appendChild(wrap);
   scrollBottom();
 }
 
@@ -190,7 +278,6 @@ async function sendFeedback(chatId, score, upBtn, downBtn) {
   downBtn.classList.toggle("active", score === -1);
   upBtn.disabled = true;
   downBtn.disabled = true;
-
   await chrome.runtime.sendMessage({ type: "FEEDBACK", chat_id: chatId, score });
 }
 
