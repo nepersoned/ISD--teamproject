@@ -97,4 +97,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
+
+  if (msg.type === "LOG_VIEW") {
+    fetch(`${API}/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: msg.user_id,
+        course_id: msg.course_id,
+        material_id: msg.material_id ?? null,
+        stay_time: msg.stay_time,
+      }),
+    }).catch(() => {});
+    return false;
+  }
 });

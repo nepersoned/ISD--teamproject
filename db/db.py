@@ -103,6 +103,16 @@ def upsert_material(
     return cur.lastrowid
 
 
+# ── Personal_Log ─────────────────────────────────────
+
+def insert_personal_log(user_id: int, course_id: int, material_id: int | None, stay_time: int):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO Personal_Log (user_id, course_id, material_id, stay_time) VALUES (?,?,?,?)",
+            (user_id, course_id, material_id, stay_time),
+        )
+
+
 # ── Learning Activity ─────────────────────────────────
 
 def clear_activities(user_id: int, course_id: int):

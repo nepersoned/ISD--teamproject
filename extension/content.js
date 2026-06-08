@@ -81,4 +81,35 @@ if (!document.getElementById("lms-copilot-root")) {
       iframe.contentWindow?.postMessage({ type: "URL_CHANGED", courseUrlId: getCourseUrlId() }, "*");
     }
   }).observe(document, { subtree: true, childList: true });
+
+  // ── Personal_Log — 체류 시간 측정 ──────────────────
+  let pageEnterTime = Date.now();
+
+  async function flushLog() {
+    const stayTime = Math.round((Date.now() - pageEnterTime) / 1000);
+    if (stayTime < 5) return; // 5초 미만 무시
+
+    const stored = await chrome.storage.local.get(["user_id", "course_map"]);
+    const userId = stored.user_id;
+    if (!userId) return;
+
+    const kjkey = getCourseUrlId();
+    const courseEntry = kjkey && stored.course_map ? stored.course_map[kjkey] : null;
+    const courseId = courseEntry?.course_id ?? null;
+    if (!courseId) return;
+
+    chrome.runtime.sendMessage({
+      type: "LOG_VIEW",
+      user_id: userId,
+      course_id: courseId,
+      material_id: null,
+      stay_time: stayTime,
+    });
+  }
+
+  // 페이지 이탈 시 전송
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushLog();
+  });
+  window.addEventListener("beforeunload", flushLog);
 }
