@@ -105,16 +105,19 @@ def upsert_material(
 
 # ── Learning Activity ─────────────────────────────────
 
+def clear_activities(user_id: int, course_id: int):
+    """동기화 전 해당 과목 활동 전체 삭제 — 제출 완료된 항목도 자동 정리됨."""
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM Learning_Activity WHERE user_id=? AND course_id=?",
+            (user_id, course_id),
+        )
+
+
 def upsert_activity(
     user_id: int, course_id: int, title: str, status: str, due_date
 ):
     with get_conn() as conn:
-        # Delete by (user, course, title) so status/due_date updates take effect
-        # and re-sync never creates duplicates
-        conn.execute(
-            "DELETE FROM Learning_Activity WHERE user_id=? AND course_id=? AND title=?",
-            (user_id, course_id, title),
-        )
         conn.execute(
             "INSERT INTO Learning_Activity (user_id, course_id, title, status, due_date) VALUES (?,?,?,?,?)",
             (user_id, course_id, title, status, due_date),

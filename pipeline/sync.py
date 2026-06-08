@@ -12,7 +12,7 @@ from scraper.eclass_scraper import EClassScraper, MATERIAL_DIR
 from db.db import (
     init_schema, upsert_user, touch_sync,
     upsert_course, upsert_enrollment,
-    upsert_material, upsert_activity,
+    upsert_material, clear_activities, upsert_activity,
 )
 from pipeline.chunker import chunk_material
 
@@ -89,6 +89,7 @@ def run_sync(lms_id: str = None, cookie_str: str = None) -> dict:
         # ── 학습 활동 ─────────────────────────────
         activities = scraper.get_activities(kjkey)
         print(f"      활동 {len(activities)}개")
+        clear_activities(user_id, course_id)   # 제출 완료된 항목 포함 전체 초기화
         for act in activities:
             upsert_activity(
                 user_id=user_id,
@@ -169,6 +170,7 @@ def run_sync_delta(lms_id: str = None, cookie_str: str = None) -> dict:
         if "activity" in kinds:
             activities = scraper.get_activities(kjkey)
             print(f"  [{kjkey}] 활동 {len(activities)}개 확인")
+            clear_activities(user_id, course_id)
             for act in activities:
                 upsert_activity(
                     user_id=user_id, course_id=course_id,
