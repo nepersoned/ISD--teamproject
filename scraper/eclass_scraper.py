@@ -229,34 +229,81 @@ class EClassScraper:
             return []
 
         activities = []
+
+        # 과제/팀프로젝트: 실제 데이터는 AJAX POST 엔드포인트에 있음
         for kind, path in [
-            ("assignment", "/ilos/st/course/report_list_form.acl"),
-            ("quiz",       "/ilos/st/course/test_list_form.acl"),
-            ("online",     "/ilos/st/course/econtents_list_form.acl"),
+            ("assignment", "/ilos/st/course/report_list.acl"),
+            ("project",    "/ilos/st/course/project_list.acl"),
         ]:
             try:
-                resp = self.session.get(BASE_URL + path, timeout=15)
+                resp = self.session.post(
+                    BASE_URL + path,
+                    data={"start": "0", "display": "1", "SCH_VALUE": "",
+                          "ud": self.lms_id, "ky": kjkey, "encoding": "utf-8"},
+                    timeout=15,
+                )
                 resp.raise_for_status()
                 activities += self._parse_activity_list(resp.content, kind)
             except Exception:
                 pass
+
+        # 퀴즈: test_list_form.acl 은 HTML 테이블을 직접 포함
+        try:
+            resp = self.session.get(
+                BASE_URL + "/ilos/st/course/test_list_form.acl", timeout=15
+            )
+            resp.raise_for_status()
+            activities += self._parse_activity_list(resp.content, "quiz")
+        except Exception:
+            pass
+
         return activities
 
     def _parse_activity_list(self, content: bytes, kind: str) -> list[dict]:
         soup  = BeautifulSoup(content, "lxml")
+
+        rows = soup.select("table tbody tr") or soup.select("table tr")
+
         items = []
-        for row in soup.select("table tbody tr"):
+        for row in rows:
             cols = row.find_all("td")
             if len(cols) < 2:
                 continue
-            title = cols[0].get_text(strip=True)
+            # 제목: 링크(<a>) 직접 텍스트 우선, 숫자만인 경우는 번호 컬럼이므로 스킵
+            BADGE_RE = re.compile(
+                r'\s*(퀴즈|온라인\s*시험|오프라인\s*시험|퀴즈온라인\s*시험|'
+                r'퀴즈오프라인\s*시험|온라인|오프라인|팀장제출|개별제출|'
+                r'팀\s*미지정|진행중|종료)\s*$'
+            )
+            title = ""
+            for col in cols:
+                a = col.find("a")
+                if a:
+                    # 직접 텍스트 노드만 사용 (자식 span 뱃지 제외)
+                    raw = "".join(a.find_all(string=True, recursive=False)).strip()
+                    if not raw:
+                        raw = a.get_text(strip=True)
+                    raw = BADGE_RE.sub("", raw).strip()
+                    if len(raw) > 1 and not raw.isdigit():
+                        title = raw
+                        break
+                else:
+                    t = col.get_text(strip=True)
+                    if len(t) > 1 and not t.isdigit():
+                        title = t
+                        break
             if not title:
                 continue
-            due_raw = cols[-1].get_text(strip=True)
+            # 날짜 패턴(YYYY-MM-DD 또는 YYYY.MM.DD)이 있는 열에서 마감일 추출
+            due_date = None
+            for col in reversed(cols):
+                due_date = self._parse_date(col.get_text(strip=True))
+                if due_date:
+                    break
             items.append({
                 "title":    f"[{kind}] {title}",
                 "status":   self._parse_status(row),
-                "due_date": self._parse_date(due_raw),
+                "due_date": due_date,
             })
         return items
 

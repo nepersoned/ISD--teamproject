@@ -28,11 +28,13 @@ def get_activities(user_id: int, course_id: int = None) -> list[dict]:
                 (user_id, course_id)
             ).fetchall()
         else:
+            # 과목 미선택 시: 마감일 기준 최근 2주 이전은 제외, 예정 항목 우선
             rows = conn.execute(
                 """SELECT c.title as course, la.title, la.status, la.due_date
                    FROM Learning_Activity la
                    JOIN Course c ON c.course_id = la.course_id
                    WHERE la.user_id = ?
+                     AND (la.due_date IS NULL OR la.due_date >= date('now', '-14 days'))
                    GROUP BY la.title, la.due_date
                    ORDER BY la.due_date""",
                 (user_id,)
