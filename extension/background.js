@@ -1,4 +1,4 @@
-const API = "http://localhost:8000";
+const API = "http://localhost:8001";
 
 async function getSessionCookie() {
   const cookies = await chrome.cookies.getAll({ name: "JSESSIONID" });
@@ -57,6 +57,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       ]);
       if (!user_id) return sendResponse({ ok: false, error: "동기화 필요" });
 
+      const courseKey = msg.course_id ?? "global";
+      const sessionId = (sessions ?? {})[courseKey] ?? null;
+
       const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -64,6 +67,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           user_id,
           course_id: msg.course_id ?? null,
           question: msg.question,
+          session_id: sessionId,
         }),
       });
 
@@ -71,7 +75,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const data = await res.json();
 
       const updated = { ...(sessions ?? {}) };
-      if (msg.course_id) updated[msg.course_id] = data.session_id;
+      updated[courseKey] = data.session_id;
       await chrome.storage.local.set({ sessions: updated });
 
       sendResponse({ ok: true, data });

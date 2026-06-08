@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>System Architecture — LMS AI Copilot</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="./mermaid.min.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -110,7 +110,7 @@
   <span class="tag">HUFS e-Class</span>
   <span class="tag">FastAPI</span>
   <span class="tag">SQLite · FTS5</span>
-  <span class="tag">Claude API</span>
+  <span class="tag">Groq API</span>
   <span class="sub">ISD Team · 2026</span>
 </div>
 
@@ -127,11 +127,14 @@
     <h2>End-to-End System</h2>
     <p>
       Chrome Extension이 쿠키를 포착해 /sync로 전달 → Scraper가 e-Class에서 강의자료·활동을 수집.<br>
-      자료는 청크 분할 후 SQLite FTS5에 저장되고, 질문 시 키워드 매칭으로 컨텍스트를 조합해 Claude가 답변.
+      자료는 청크 분할 후 SQLite FTS5에 저장되고, 질문 시 스마트 라우팅으로 컨텍스트를 조합해 Groq(llama-3.3-70b)가 답변.<br>
+      체류 시간은 Personal_Log에 기록되고, /log 엔드포인트로 수집된다.
     </p>
     <div class="pills">
-      <span class="pill">Sync <b>POST /sync</b></span>
-      <span class="pill">Chat <b>POST /chat</b> · <b>GET /chat/{session_id}</b> · <b>POST /chat/{id}/feedback</b></span>
+      <span class="pill">Sync <b>POST /sync</b> · <b>POST /sync/delta</b></span>
+      <span class="pill">Chat <b>POST /chat</b> · <b>POST /chat/stream (SSE)</b> · <b>GET /chat/{session_id}</b> · <b>POST /chat/{id}/feedback</b></span>
+      <span class="pill">Log <b>POST /log</b> · <b>GET /log</b></span>
+      <span class="pill">Courses <b>GET /courses</b></span>
     </div>
     <div class="mermaid">
 %%{init: {"theme": "dark", "themeVariables": {"background": "#1a1d27", "primaryColor": "#252837", "primaryTextColor": "#e2e4f0", "lineColor": "#6c8ef7", "edgeLabelBackground": "#1a1d27", "clusterBkg": "#1e2235"}}}%%
@@ -142,16 +145,18 @@ graph TB
     end
 
     subgraph API["FastAPI Backend"]
-        EP1["POST /sync"]
-        EP2["POST /chat"]
+        EP1["POST /sync\nPOST /sync/delta"]
+        EP2["POST /chat\nPOST /chat/stream (SSE)"]
         EP3["GET /chat/{session_id}"]
         EP4["POST /chat/{id}/feedback"]
+        EP5["POST /log"]
+        EP6["GET /courses"]
     end
 
     subgraph ECLASS["HUFS e-Class"]
         AUTH["main_form.acl"]
         MAT["Material 다운로드\nefile_download2.acl"]
-        ACT["Learning_Activity\nreport / test list"]
+        ACT["Learning_Activity\nreport·project AJAX POST\ntest GET"]
     end
 
     subgraph PIPE["Ingest Pipeline"]
@@ -164,13 +169,15 @@ graph TB
         DB2["Material · Doc_Chunk"]
         DB3["Learning_Activity"]
         DB4["Chat_Session · Chat_Log"]
+        DB5["Personal_Log"]
     end
 
     subgraph RAG["RAG Engine"]
-        KW["Keyword Extractor"]
+        ROUTE["Smart Router\nACTIVITY / MATERIAL KW"]
+        KW["Keyword Extractor\nllama-3.1-8b"]
         FTS["FTS5 — Doc_Chunk"]
-        PB["Prompt Builder"]
-        LLM["Claude API"]
+        PB["Prompt Builder\nD-day 태그 계산"]
+        LLM["Groq API\nllama-3.3-70b → 8b fallback"]
     end
 
     CK -->|JSESSIONID| EP1
@@ -180,14 +187,19 @@ graph TB
     SCR --> DB1 & DB3
 
     UI -->|query| EP2
-    EP2 --> KW --> FTS --> DB2
+    EP2 --> ROUTE
+    ROUTE -->|활동 질문| DB3
+    ROUTE -->|자료 질문| KW --> FTS --> DB2
     EP2 -->|Chat_Log| DB4
+    DB3 --> PB
     DB4 --> PB
     FTS --> PB
     PB --> LLM --> UI
     LLM -->|Chat_Log.sources| DB4
     UI --> EP4 --> DB4
     EP3 --> DB4
+    UI --> EP5 --> DB5
+    EP6 --> DB1
     </div>
   </div>
 </div>
@@ -200,7 +212,7 @@ graph TB
     <p>
       JSESSIONID 하나로 세션을 확립하고 KJKEY 단위로 과목 컨텍스트를 설정.<br>
       강의자료는 다운로드 → 텍스트 추출 → 페이지 단위 청크 분할 → Doc_Chunk 저장.<br>
-      MD5 체크섬으로 재동기화 시 중복 저장을 방지.
+      MD5 체크섬으로 재동기화 시 중복 저장을 방지. 활동은 동기화 전 clear_activities로 초기화해 e-Class와 일치를 보장.
     </p>
     <div class="pills">
       <span class="pill">DB <b>User</b> lms_id · enc_session_cookie · last_sync_at</span>
@@ -232,8 +244,11 @@ flowchart LR
     N --> P[(Doc_Chunk\n+ FTS5 index)]
     L -- 중복 --> Q([skip])
 
-    F --> R[report_list\ntest_list]
-    R --> S[(Learning_Activity)]
+    F --> R1[POST report_list.acl]
+    F --> R2[POST project_list.acl]
+    F --> R3[GET test_list_form.acl]
+    R1 & R2 & R3 --> CLR[clear_activities]
+    CLR --> S[(Learning_Activity)]
 
     O --> T[touch_sync]
     P --> T
@@ -247,17 +262,18 @@ flowchart LR
 <div id="tab-chat" class="tab">
   <div class="section-label">질문 · 검색 · 생성 파이프라인</div>
   <div class="card">
-    <h2>Chat / RAG Flow — FTS5 Keyword → Claude</h2>
+    <h2>Chat / RAG Flow — Smart Routing → Groq</h2>
     <p>
-      질문에서 키워드를 추출해 SQLite FTS5로 Doc_Chunk를 검색.<br>
-      chunk_id · material_id · page_ref로 출처를 추적하고 Chat_Log의 sources 필드에 JSON으로 저장.<br>
-      피드백(👍/👎)은 Chat_Log.feedback_score에 즉시 반영.
+      질문 키워드를 분석해 과제/마감 질문이면 Learning_Activity를, 강의자료 질문이면 Doc_Chunk FTS5를 검색.<br>
+      키워드 추출은 llama-3.1-8b-instant(토큰 절약), 최종 답변은 llama-3.3-70b-versatile(429 시 8b fallback).<br>
+      활동 목록에는 D-day 태그를 Python에서 직접 계산해 삽입. 피드백(👍/👎)은 Chat_Log.feedback_score에 반영.
     </p>
     <div class="pills">
+      <span class="pill">Router <b>ACTIVITY_KEYWORDS → Learning_Activity</b></span>
+      <span class="pill">Router <b>MATERIAL_KEYWORDS → FTS5 Doc_Chunk LIMIT 8</b></span>
       <span class="pill">DB <b>Chat_Session</b> user_id · course_id · created_at</span>
-      <span class="pill">DB <b>Chat_Log</b> role · content · sources · feedback_score</span>
+      <span class="pill">DB <b>Chat_Log</b> role · content · sources · keywords · feedback_score</span>
       <span class="pill">sources <b>[{chunk_id, material_id, page_ref}]</b></span>
-      <span class="pill">FTS5 <b>Doc_Chunk MATCH keywords ORDER BY rank LIMIT k</b></span>
     </div>
     <div class="mermaid">
 %%{init: {"theme": "dark", "themeVariables": {"background": "#1a1d27", "primaryColor": "#252837", "primaryTextColor": "#e2e4f0", "lineColor": "#6c8ef7", "edgeLabelBackground": "#1a1d27", "clusterBkg": "#1e2235"}}}%%
@@ -271,9 +287,11 @@ flowchart LR
         D --> E[(Chat_Log)]
     end
 
-    subgraph SEARCH["FTS5 검색"]
-        A --> F[Keyword\nExtraction]
-        F --> G[Doc_Chunk\nFTS5 MATCH]
+    subgraph SEARCH["스마트 라우팅 · 검색"]
+        A --> RT{ACTIVITY\nKEYWORDS?}
+        RT -- 과제/마감 질문 --> ACT2[(Learning_Activity\nD-day 태그 계산)]
+        RT -- 강의자료 질문 --> F[Keyword Extractor\nllama-3.1-8b]
+        F --> G[Doc_Chunk\nFTS5 MATCH LIMIT 8]
         G --> H[(Doc_Chunk)]
         G --> I[top-k Doc_Chunk\nchunk_id · page_ref]
     end
@@ -281,14 +299,16 @@ flowchart LR
     subgraph BUILD["Prompt 조립"]
         E --> J[Prompt Builder]
         I --> J
-        J --> K[system + context\n+ history + query]
+        ACT2 --> J
+        J --> K[system + context\n+ D-day + history + query]
     end
 
-    subgraph GEN["생성 · 저장"]
-        K --> L[Claude API]
+    subgraph GEN["생성 · 저장 (SSE 스트리밍)"]
+        K --> L[Groq API\nllama-3.3-70b\n→ 8b fallback on 429]
+        L -->|stream=True| LS[SSE delta chunks\ntext/event-stream]
+        LS --> O([Extension 실시간 렌더링])
         L --> M[(Chat_Log\nrole=user)]
-        L --> N[(Chat_Log\nrole=assistant\nsources=JSON)]
-        L --> O([응답 + Chat_Log.sources])
+        L --> N[(Chat_Log\nrole=assistant\nsources · keywords)]
     end
 
     subgraph FB["피드백"]

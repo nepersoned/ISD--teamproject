@@ -3,95 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <title>Sequence Diagrams — LMS AI Copilot</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="./mermaid.min.js"></script>
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --border: #2a2d3a;
-      --accent: #6c8ef7;
-      --text: #e2e4f0;
-      --muted: #7a7d90;
-      --tag-bg: #1e2235;
+      --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+      --accent: #6c8ef7; --text: #e2e4f0; --muted: #7a7d90; --tag-bg: #1e2235;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      min-height: 100vh;
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem 2rem;
-      border-bottom: 1px solid var(--border);
-    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+    .topbar { display: flex; align-items: center; gap: 1rem; padding: 1rem 2rem; border-bottom: 1px solid var(--border); }
     .topbar .title { font-size: .95rem; font-weight: 600; }
     .topbar .sub   { font-size: .78rem; color: var(--muted); margin-left: auto; }
-    .tag {
-      background: var(--tag-bg);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: .75rem;
-      padding: .25rem .75rem;
-      color: var(--muted);
-    }
+    .tag { background: var(--tag-bg); border: 1px solid var(--border); border-radius: 20px; font-size: .75rem; padding: .25rem .75rem; color: var(--muted); }
     .tag.hi { border-color: var(--accent); color: var(--accent); }
-    .tabnav {
-      display: flex;
-      border-bottom: 1px solid var(--border);
-      padding: 0 2rem;
-    }
-    .tabnav button {
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--muted);
-      font-size: .85rem;
-      padding: .75rem 1.2rem;
-      cursor: pointer;
-      transition: .15s;
-    }
+    .tabnav { display: flex; border-bottom: 1px solid var(--border); padding: 0 2rem; }
+    .tabnav button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); font-size: .85rem; padding: .75rem 1.2rem; cursor: pointer; transition: .15s; }
     .tabnav button.active { color: var(--accent); border-bottom-color: var(--accent); }
     .tabnav button:hover  { color: var(--text); }
     .tab { display: none; padding: 1.5rem 2rem; }
     .tab.active { display: block; }
-    .section-label {
-      font-size: .7rem;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 1rem;
-    }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.5rem 2rem;
-      overflow-x: auto;
-    }
-    .card p {
-      font-size: .82rem;
-      color: var(--muted);
-      line-height: 1.6;
-      margin-bottom: 1.2rem;
-    }
-    .pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .4rem;
-      margin-bottom: 1.2rem;
-    }
-    .pill {
-      background: var(--tag-bg);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: .71rem;
-      padding: .18rem .55rem;
-      color: var(--muted);
-    }
+    .section-label { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem 2rem; overflow-x: auto; }
+    .card p { font-size: .82rem; color: var(--muted); line-height: 1.6; margin-bottom: 1.2rem; }
+    .pills { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1.2rem; }
+    .pill { background: var(--tag-bg); border: 1px solid var(--border); border-radius: 5px; font-size: .71rem; padding: .18rem .55rem; color: var(--muted); }
     .pill b { color: var(--accent); }
     .mermaid svg { background: transparent !important; min-width: 700px; }
   </style>
@@ -101,9 +36,9 @@
 <div class="topbar">
   <span class="title">LMS AI Copilot</span>
   <span class="tag hi">Sequence Diagrams</span>
-  <span class="tag">SQLite</span>
+  <span class="tag">SQLite · FTS5</span>
   <span class="tag">FastAPI</span>
-  <span class="tag">Claude API</span>
+  <span class="tag">Groq API</span>
   <span class="sub">ISD Team · 2026</span>
 </div>
 
@@ -117,10 +52,12 @@
   <div class="section-label">e-Class → SQLite 동기화 흐름</div>
   <div class="card">
     <p>
-      JSESSIONID 쿠키를 주입해 세션을 확립하고, 과목별로 Material · Learning_Activity를 수집해 SQLite에 저장합니다.
+      JSESSIONID 쿠키를 Chrome에서 자동 포착해 세션을 확립하고, 과목별로 Material · Learning_Activity를 수집해 SQLite에 저장합니다.<br>
+      과제·팀프로젝트는 AJAX 엔드포인트(POST)로 직접 수집하며, 동기화마다 기존 활동을 초기화해 e-Class와 일치를 보장합니다.
     </p>
     <div class="pills">
       <span class="pill">EP <b>POST /sync</b></span>
+      <span class="pill">Scraper <b>JSESSIONID Cookie Injection</b></span>
       <span class="pill">DB <b>User · Course · Enrollment · Material · Doc_Chunk · Learning_Activity</b></span>
     </div>
     <div class="mermaid">
@@ -138,15 +75,16 @@ sequenceDiagram
     participant DB as SQLite
 
     U  ->> EX : 동기화 클릭
-    EX ->> AP : POST /sync
-    AP ->> SC : run_sync()
+    EX ->> EX : chrome.cookies.get(JSESSIONID)
+    EX ->> AP : POST /sync {lms_id, cookie_str}
+    AP ->> SC : run_sync(lms_id, cookie_str)
 
     note over SC,EC : Cookie Injection — JSESSIONID 주입
     SC ->> EC : GET main_form.acl
     EC -->> SC : 세션 확립
 
     SC ->> DB : upsert_user()
-    DB -->> SC : User.user_id
+    DB -->> SC : user_id
 
     note over SC,EC : em.sub_open[kj] 파싱 → KJKEY 목록
     SC ->> EC : GET main_form.acl
@@ -156,89 +94,98 @@ sequenceDiagram
         SC ->> DB : upsert_course() · upsert_enrollment()
 
         note over SC,EC : eclass_room2.acl → 과목 컨텍스트 설정
-        SC ->> EC : POST eclass_room2.acl
+        SC ->> EC : POST eclass_room2.acl {KJKEY}
         EC -->> SC : returnURL
 
         SC ->> EC : lecture_material_list.acl
         EC -->> SC : downloadClick 해시[]
 
-        loop 각 Material
+        loop 각 Material (신규만)
             SC ->> EC : list_file_list2 → efile_download2
-            EC -->> SC : 파일 (PDF · PPTX)
-            SC ->> DB : upsert_material() → Material
-            note over SC,DB : chunker.py — 신규 파일만 청킹
+            EC -->> SC : PDF · PPTX 파일
+            SC ->> DB : upsert_material()
             SC ->> DB : chunk_material() → Doc_Chunk + FTS5
         end
 
-        SC ->> EC : report_list · test_list
-        EC -->> SC : 과제 · 퀴즈
-        SC ->> DB : upsert_activity() → Learning_Activity
+        SC ->> DB : clear_activities()
+        note over SC,EC : AJAX POST — report_list.acl / project_list.acl / test_list_form.acl
+        SC ->> EC : POST report_list.acl {ud, ky}
+        EC -->> SC : 과제 목록
+        SC ->> EC : POST project_list.acl {ud, ky}
+        EC -->> SC : 팀프로젝트 목록
+        SC ->> EC : GET test_list_form.acl
+        EC -->> SC : 퀴즈 목록
+        SC ->> DB : upsert_activity() × N
     end
 
     SC ->> DB : touch_sync() → User.last_sync_at
-    AP -->> EX : courses · materials · activities
-    EX -->> U  : 동기화 완료
+    AP -->> EX : {user_id, courses, materials, activities}
+    EX -->> U  : "방금 동기화"
     </div>
   </div>
 </div>
 
 <!-- ② RAG Q&A -->
 <div id="tab-rag" class="tab">
-  <div class="section-label">질문 → 키워드 검색 → Claude 답변 흐름</div>
+  <div class="section-label">질문 → 스마트 라우팅 → Groq 답변 흐름</div>
   <div class="card">
     <p>
-      키워드를 FTS5로 Doc_Chunk에서 검색하고, chunk_id · material_id · page_ref를 Chat_Log.sources(JSON)에 저장합니다.<br>
-      Material은 원본 파일, Doc_Chunk는 그 분할본, Chat_Log.sources는 답변에 쓰인 청크 참조입니다.<br>
-      피드백은 Chat_Log.feedback_score에 즉시 반영됩니다.
+      질문 키워드를 분석해 <b>과제/마감 질문</b>이면 Learning_Activity를, <b>강의자료 질문</b>이면 Doc_Chunk FTS5를 검색합니다.<br>
+      키워드 추출은 소형 모델(llama-3.1-8b-instant)로 토큰을 절약하고, 최종 답변은 llama-3.3-70b-versatile이 생성합니다.<br>
+      활동 목록에는 D-day 태그를 직접 계산해 삽입하므로 LLM의 날짜 연산 오류가 없습니다.
     </p>
     <div class="pills">
       <span class="pill">EP <b>POST /chat · GET /chat/{session_id} · POST /chat/{id}/feedback</b></span>
-      <span class="pill">DB <b>Chat_Session · Chat_Log · Doc_Chunk · Material</b></span>
-      <span class="pill">sources <b>[{chunk_id, material_id, page_ref}]</b></span>
+      <span class="pill">Router <b>ACTIVITY_KEYWORDS → Learning_Activity</b></span>
+      <span class="pill">Router <b>MATERIAL_KEYWORDS → FTS5 Doc_Chunk</b></span>
+      <span class="pill">LLM <b>llama-3.3-70b (→ 8b fallback on 429)</b></span>
     </div>
     <div class="mermaid">
 %%{init: {
   "theme": "dark",
-  "sequence": { "actorMargin": 60, "width": 150, "messageMargin": 35, "useMaxWidth": false }
+  "sequence": { "actorMargin": 55, "width": 145, "messageMargin": 30, "useMaxWidth": false }
 }}%%
 sequenceDiagram
     autonumber
     actor    U  as User
     participant EX as Extension
     participant AP as FastAPI
-    participant KW as Keywords
-    participant LM as Claude
     participant DB as SQLite
+    participant GR as Groq API
 
     U  ->> EX : 질문 입력
-    EX ->> AP : POST /chat {query, course_id}
+    EX ->> AP : POST /chat {user_id, course_id, question}
 
     AP ->> DB : Chat_Session 조회 / 생성
     DB -->> AP : session_id
+    AP ->> DB : SELECT Chat_Log (최근 6턴)
+    DB -->> AP : 대화 이력
 
-    AP ->> DB : SELECT Chat_Log WHERE session_id
-    DB -->> AP : 최근 대화 이력
+    note over AP : 스마트 라우팅 — ACTIVITY_KEYWORDS 감지
+    alt 과제/마감 질문 (과제·마감·언제·이번주 등)
+        AP ->> DB : SELECT Learning_Activity (D-day 계산 포함)
+        DB -->> AP : activities[]
+    else 강의자료 질문
+        AP ->> GR : extract_keywords (llama-3.1-8b)
+        GR -->> AP : keywords
+        AP ->> DB : Doc_Chunk FTS5 MATCH keywords LIMIT 8
+        DB -->> AP : chunks[] (chunk_id · page_ref · content)
+    end
 
-    note over AP,KW : 키워드 추출 → FTS5 검색
-    AP ->> KW : extract_keywords(query)
-    KW -->> AP : keywords[]
-    AP ->> DB : Doc_Chunk FTS5 MATCH keywords
-    DB -->> AP : chunk_id · material_id · page_ref · content
+    note over AP : Prompt 조립 — system + context + history + query
+    AP ->> GR : chat.completions (llama-3.3-70b)
+    GR -->> AP : 답변
 
-    note over AP,LM : system + context + history + query
-    AP ->> LM : prompt 전송
-    LM -->> AP : 답변 (streaming)
+    AP ->> DB : INSERT Chat_Log (user)
+    AP ->> DB : INSERT Chat_Log (assistant · sources · keywords)
 
-    AP ->> DB : INSERT Chat_Log role=user
-    AP ->> DB : INSERT Chat_Log role=assistant · sources=JSON
-
-    AP -->> EX : answer · Chat_Log.sources · chat_id
-    EX -->> U  : 답변 + Material 출처 표시
+    AP -->> EX : {answer, sources, chat_id}
+    EX -->> U  : 답변 + 출처 페이지 표시
 
     opt 피드백
         U  ->> EX : 👍 / 👎
-        EX ->> AP : POST /chat/{chat_id}/feedback
-        AP ->> DB : UPDATE Chat_Log feedback_score
+        EX ->> AP : POST /chat/{chat_id}/feedback?score=±1
+        AP ->> DB : UPDATE Chat_Log.feedback_score
         AP -->> EX : OK
     end
     </div>
@@ -246,12 +193,7 @@ sequenceDiagram
 </div>
 
 <script>
-  mermaid.initialize({
-    startOnLoad: true,
-    securityLevel: 'loose',
-    sequence: { actorMargin: 60, width: 150, useMaxWidth: false }
-  });
-
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
   function show(tab, btn) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tabnav button').forEach(b => b.classList.remove('active'));

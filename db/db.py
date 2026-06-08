@@ -248,3 +248,18 @@ def get_chat_history(session_id: int) -> list[dict]:
             (session_id,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_hybrid_history(session_id: int, keywords: str) -> list[dict]:
+    """최근 4턴 항상 포함 + FTS로 관련 이전 메시지 최대 3개 추가."""
+    all_msgs = get_chat_history(session_id)
+    if len(all_msgs) <= 6:
+        return all_msgs
+    tail = all_msgs[-4:]
+    tail_ids = {m["chat_id"] for m in tail}
+    try:
+        relevant = search_chat_logs(session_id, keywords, limit=3)
+        extra = [m for m in relevant if m["chat_id"] not in tail_ids]
+        return sorted(extra + tail, key=lambda x: x["chat_id"])
+    except Exception:
+        return tail

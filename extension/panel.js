@@ -173,31 +173,96 @@ async function sendMessage(question) {
   document.getElementById("btn-send").disabled = true;
 
   renderMessage("user", q);
-  const typingEl = appendTyping();
 
-  const { ok, data, error } = await chrome.runtime.sendMessage({
-    type: "CHAT", question: q, course_id: state.courseId ?? null,
-  });
+  const { wrap, textEl, el } = appendStreamBubble();
 
-  typingEl.remove();
+  let fullText = "";
+  let chatId = null;
+  let sources = [];
 
-  if (!ok) {
-    renderMessage("assistant", `오류: ${error ?? "서버 연결 실패"}`);
-  } else {
-    if (data.session_id) {
-      state.sessionId = data.session_id;
-      await chrome.storage.local.set({ session_id: data.session_id });
-    }
-    renderAssistantMessage(data.chat_id, data.answer, data.sources ?? []);
-
-    // 대화 내용 저장
-    state.messages.push({ role: "user", content: q });
-    state.messages.push({
-      role: "assistant", content: data.answer,
-      chatId: data.chat_id, sources: data.sources ?? []
+  try {
+    const res = await fetch("http://localhost:8001/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: state.userId,
+        course_id: state.courseId ?? null,
+        question: q,
+        session_id: state.sessionId ?? null,
+      }),
     });
-    await chrome.storage.local.set({ messages: state.messages });
+
+    if (!res.ok) {
+      textEl.innerHTML = `<p>오류: 서버 연결 실패 (${res.status})</p>`;
+    } else {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.delta) {
+              fullText += data.delta;
+              textEl.innerHTML = "<p>" + renderMarkdown(fullText) + "</p>";
+              scrollBottom();
+            }
+            if (data.done) {
+              chatId = data.chat_id;
+              sources = data.sources ?? [];
+              state.sessionId = data.session_id;
+              await chrome.storage.local.set({ session_id: data.session_id });
+            }
+            if (data.error) {
+              textEl.innerHTML = `<p>오류: ${data.error}</p>`;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (err) {
+    textEl.innerHTML = `<p>오류: ${err.message}</p>`;
   }
+
+  // 스트리밍 완료 후 출처 + 피드백 추가
+  if (sources.length > 0) {
+    const sourcesEl = document.createElement("div");
+    sourcesEl.className = "sources";
+    sources.forEach((s) => {
+      const tag = document.createElement("span");
+      tag.className = "source-tag";
+      tag.textContent = `${s.page_ref}p`;
+      sourcesEl.appendChild(tag);
+    });
+    el.appendChild(sourcesEl);
+  }
+
+  if (chatId) {
+    const feedbackEl = document.createElement("div");
+    feedbackEl.className = "feedback";
+    const upBtn = document.createElement("button");
+    upBtn.textContent = "👍 도움됐어요";
+    const downBtn = document.createElement("button");
+    downBtn.textContent = "👎 별로에요";
+    upBtn.onclick = () => sendFeedback(chatId, 1, upBtn, downBtn);
+    downBtn.onclick = () => sendFeedback(chatId, -1, upBtn, downBtn);
+    feedbackEl.appendChild(upBtn);
+    feedbackEl.appendChild(downBtn);
+    el.appendChild(feedbackEl);
+  }
+
+  state.messages.push({ role: "user", content: q });
+  state.messages.push({ role: "assistant", content: fullText, chatId, sources });
+  await chrome.storage.local.set({ messages: state.messages });
 
   document.getElementById("btn-send").disabled = false;
   inputEl.focus();
@@ -230,7 +295,7 @@ function renderMessage(role, text) {
   return wrap;
 }
 
-function appendTyping() {
+function appendStreamBubble() {
   const wrap = document.createElement("div");
   wrap.style.cssText = "display:flex; flex-direction:column; align-items:flex-start; gap:4px;";
 
@@ -241,12 +306,16 @@ function appendTyping() {
 
   const el = document.createElement("div");
   el.className = "msg assistant";
-  el.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+
+  const textEl = document.createElement("div");
+  textEl.className = "msg-body";
+  textEl.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+  el.appendChild(textEl);
   wrap.appendChild(el);
 
   document.getElementById("messages").appendChild(wrap);
   scrollBottom();
-  return wrap;
+  return { wrap, textEl, el };
 }
 
 function renderMarkdown(text) {

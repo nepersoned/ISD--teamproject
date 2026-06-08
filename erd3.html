@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>LMS AI Copilot ERD</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="./mermaid.min.js"></script>
   <style>
     body { font-family: sans-serif; padding: 2rem; background: #fff; }
     h1 { font-size: 1.2rem; color: #333; margin-bottom: 1.5rem; }
@@ -73,6 +73,7 @@
         int session_id FK
         string role
         text content
+        text keywords
         json sources
         int feedback_score
         timestamp created_at

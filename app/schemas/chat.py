@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     user_id: int
     course_id: int | None = None
     question: str
+    session_id: int | None = None
 
 
 class ChatResponse(BaseModel):
