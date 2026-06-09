@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>LMS AI Copilot ERD</title>
+  <script src="./mermaid.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #fff; }
+    h1 { font-size: 1.2rem; color: #333; margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>LMS-Aware AI Copilot — ERD</h1>
+  <pre class="mermaid">
+    erDiagram
+    User {
+        int user_id PK
+        string lms_id
+        text enc_session_cookie
+        int scraping_interval
+        timestamp last_sync_at
+    }
+    Course {
+        int course_id PK
+        int lms_url_id UK
+        string course_code
+        string title
+    }
+    Enrollment {
+        int enroll_id PK
+        int user_id FK
+        int course_id FK
+        string role
+    }
+    Material {
+        int material_id PK
+        int course_id FK
+        string file_type
+        string file_path
+        string checksum
+        timestamp synced_at
+    }
+    Doc_Chunk {
+        int chunk_id PK
+        int material_id FK
+        text content
+        int page_ref
+        int chunk_index
+    }
+    Learning_Activity {
+        int activity_id PK
+        int user_id FK
+        int course_id FK
+        string title
+        string status
+        date due_date
+    }
+    Personal_Log {
+        int log_id PK
+        int user_id FK
+        int course_id FK
+        int material_id FK
+        int stay_time
+    }
+    Chat_Session {
+        int session_id PK
+        int user_id FK
+        int course_id FK
+        timestamp created_at
+    }
+    Chat_Log {
+        int chat_id PK
+        int session_id FK
+        string role
+        text content
+        text keywords
+        json sources
+        int feedback_score
+        timestamp created_at
+    }
+
+    User ||--o{ Enrollment : "enrolls"
+    Course ||--o{ Enrollment : "enrolls"
+    Course ||--o{ Material : "contains"
+    User ||--o{ Learning_Activity : "performs"
+    User ||--o{ Personal_Log : "logs"
+    Course ||--o{ Personal_Log : "logs"
+    User ||--o{ Chat_Session : "opens"
+    Course ||--o{ Chat_Session : "scoped_to"
+    Chat_Session ||--o{ Chat_Log : "contains"
+    Material ||--o{ Doc_Chunk : "splits_into"
+    Material ||--o{ Personal_Log : "viewed"
+  </pre>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+  </script>
+</body>
+</html>

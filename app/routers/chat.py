@@ -41,21 +41,34 @@ def _resolve_session(user_id: int, course_id: int | None, session_id: int | None
     return create_chat_session(user_id, course_id)
 
 
-def extract_keywords(client: Groq, question: str) -> str:
+def extract_keywords(client: Groq, question: str, history: list[dict] | None = None) -> str:
     try:
+        context = ""
+        if history:
+            # user 메시지만 — assistant 응답의 페이지/출처 텍스트가 키워드를 오염시킴
+            user_msgs = [m for m in history if m['role'] == 'user'][-3:]
+            if user_msgs:
+                context = "\n".join(f"user: {m['content'][:120]}" for m in user_msgs)
+                context = f"[이전 질문]\n{context}\n\n"
         res = client.chat.completions.create(
             model=SMALL_MODEL,
             max_tokens=20,
             messages=[{
                 "role": "user",
                 "content": (
-                    "다음 질문에서 PDF 강의자료 검색에 쓸 핵심 영어/한국어 단어 2~3개만 "
-                    "공백으로 구분해서 출력해. 다른 말 없이 단어만 출력:\n" + question
+                    f"{context}다음 질문에서 PDF 강의자료 검색에 쓸 핵심 영어/한국어 단어 2~3개만 "
+                    "공백으로 구분해서 출력해. 대명사(그거, 이것 등)는 앞 대화 맥락에서 실제 주제어로 바꿔서 출력해. "
+                    "다른 말 없이 단어만 출력:\n" + question
                 )
             }]
         )
-        keywords = res.choices[0].message.content.strip()
-        return re.sub(r'[^\w\s]', ' ', keywords).strip()
+        raw = res.choices[0].message.content.strip()
+        # 개행·특수문자 제거 후 단어만 추출, 최대 5개
+        words = re.findall(r'[가-힣A-Za-z0-9]{2,}', raw)
+        # 문장 조사/어미 제거 (내용에는, 포함됩니다 등 FTS에 무의미한 단어 제거)
+        stopwords = {'내용에는', '포함됩니다', '다음과', '같은', '핵심', '단어가', '있습니다', '합니다', '이며', '으로'}
+        words = [w for w in words if w not in stopwords]
+        return ' '.join(words[:5]) if words else ''
     except Exception:
         return _safe_keywords(question)
 
@@ -75,7 +88,7 @@ def get_activities(user_id: int, course_id: int = None) -> list[dict]:
     with get_conn() as conn:
         if course_id:
             rows = conn.execute(
-                """SELECT c.title as course, la.title, la.status, la.due_date
+                """SELECT c.title as course, la.title, la.status, la.due_date, la.description
                    FROM Learning_Activity la
                    JOIN Course c ON c.course_id = la.course_id
                    WHERE la.user_id = ? AND la.course_id = ?
@@ -85,7 +98,7 @@ def get_activities(user_id: int, course_id: int = None) -> list[dict]:
             ).fetchall()
         else:
             rows = conn.execute(
-                """SELECT c.title as course, la.title, la.status, la.due_date
+                """SELECT c.title as course, la.title, la.status, la.due_date, la.description
                    FROM Learning_Activity la
                    JOIN Course c ON c.course_id = la.course_id
                    WHERE la.user_id = ?
@@ -136,7 +149,10 @@ def build_prompt(query, chunks, history, course_title, activities=None):
             else:
                 due_str = "마감일 없음"
             status = "확인 불가" if a['status'] == "unknown" else a['status']
-            lines.append(f"- [{a['course']}] {a['title']} | 마감: {due_str} | 상태: {status}")
+            line = f"- [{a['course']}] {a['title']} | 마감: {due_str} | 상태: {status}"
+            if a.get('description'):
+                line += f"\n  내용: {a['description'][:400]}"
+            lines.append(line)
         activity_block = "\n".join(lines)
 
     history_block = "\n".join(
@@ -155,8 +171,8 @@ def build_prompt(query, chunks, history, course_title, activities=None):
 
 def _build_context(client: Groq, req: ChatRequest, session_id: int):
     """스마트 라우팅: 활동/자료 분기, 키워드 추출, 청크 검색."""
-    keywords = extract_keywords(client, req.question) or _safe_keywords(req.question)
-    history = get_hybrid_history(session_id, keywords)
+    history = get_hybrid_history(session_id, _safe_keywords(req.question))
+    keywords = extract_keywords(client, req.question, history) or _safe_keywords(req.question)
 
     is_activity = any(kw in req.question for kw in ACTIVITY_KEYWORDS)
     needs_material = any(kw in req.question for kw in MATERIAL_KEYWORDS)
@@ -167,12 +183,18 @@ def _build_context(client: Groq, req: ChatRequest, session_id: int):
 
     if not is_activity or not activities or needs_material:
         if keywords:
+            # 먼저 AND 검색, 없으면 OR로 재시도
             chunks = search_chunks(course_id=req.course_id, keywords=keywords, limit=8)
+            if not chunks:
+                or_kw = ' OR '.join(keywords.split())
+                chunks = search_chunks(course_id=req.course_id, keywords=or_kw, limit=8)
         if not chunks:
-            words = re.sub(r'[^\w\s]', ' ', req.question).split()
-            fallback_kw = ' OR '.join(w for w in words if len(w) > 1)
+            # 원문 질문 단어 OR fallback — notice 청크 제외
+            words = [w for w in re.sub(r'[^\w\s]', ' ', req.question).split() if len(w) > 1]
+            fallback_kw = ' OR '.join(words)
             if fallback_kw:
-                chunks = search_chunks(course_id=req.course_id, keywords=fallback_kw, limit=8)
+                chunks = search_chunks(course_id=req.course_id, keywords=fallback_kw, limit=8,
+                                       exclude_notice=True)
 
     course_title = get_course_title(req.course_id) if req.course_id else "수강 과목"
     system, user_prompt = build_prompt(req.question, chunks, history, course_title, activities)

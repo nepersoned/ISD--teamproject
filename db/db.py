@@ -20,6 +20,11 @@ def init_schema():
     sql = schema_path.read_text(encoding="utf-8")
     with get_conn() as conn:
         conn.executescript(sql)
+        # 기존 DB 마이그레이션: description 컬럼 추가
+        try:
+            conn.execute("ALTER TABLE Learning_Activity ADD COLUMN description TEXT")
+        except Exception:
+            pass
     print(f"[DB] schema applied → {DB_PATH.resolve()}")
 
 
@@ -125,12 +130,12 @@ def clear_activities(user_id: int, course_id: int):
 
 
 def upsert_activity(
-    user_id: int, course_id: int, title: str, status: str, due_date
+    user_id: int, course_id: int, title: str, status: str, due_date, description: str = None
 ):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO Learning_Activity (user_id, course_id, title, status, due_date) VALUES (?,?,?,?,?)",
-            (user_id, course_id, title, status, due_date),
+            "INSERT INTO Learning_Activity (user_id, course_id, title, status, due_date, description) VALUES (?,?,?,?,?,?)",
+            (user_id, course_id, title, status, due_date, description),
         )
 
 
@@ -153,6 +158,38 @@ def insert_doc_chunks(material_id: int, chunks: list[dict]):
             )
 
 
+def upsert_notice_material(course_id: int) -> int:
+    """공지사항용 가상 Material 레코드 — 과목당 하나."""
+    checksum = f"notice_{course_id}"
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT material_id FROM Material WHERE checksum = ?", (checksum,)
+        ).fetchone()
+        if row:
+            return row["material_id"]
+        cur = conn.execute(
+            "INSERT INTO Material (course_id, title, file_type, file_path, checksum) VALUES (?, '공지사항', 'notice', '', ?)",
+            (course_id, checksum),
+        )
+    return cur.lastrowid
+
+
+def clear_notice_chunks(material_id: int):
+    """공지사항 재동기화 전 기존 청크 삭제."""
+    with get_conn() as conn:
+        chunk_ids = [r["chunk_id"] for r in conn.execute(
+            "SELECT chunk_id FROM Doc_Chunk WHERE material_id = ?", (material_id,)
+        ).fetchall()]
+        if chunk_ids:
+            conn.execute(
+                f"DELETE FROM Doc_Chunk_fts WHERE rowid IN ({','.join('?'*len(chunk_ids))})",
+                chunk_ids,
+            )
+            conn.execute(
+                "DELETE FROM Doc_Chunk WHERE material_id = ?", (material_id,)
+            )
+
+
 def chunks_exist(material_id: int) -> bool:
     with get_conn() as conn:
         row = conn.execute(
@@ -161,32 +198,38 @@ def chunks_exist(material_id: int) -> bool:
     return row is not None
 
 
-def search_chunks(course_id: int | None, keywords: str, limit: int = 8) -> list[dict]:
+def search_chunks(course_id: int | None, keywords: str, limit: int = 8,
+                  exclude_notice: bool = False) -> list[dict]:
     """FTS5 키워드 검색 — chunk_id · material_id · page_ref · snippet 반환."""
-    with get_conn() as conn:
-        if course_id:
-            rows = conn.execute(
-                """
-                SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
-                FROM Doc_Chunk_fts
-                JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
-                JOIN Material  m  ON m.material_id = dc.material_id
-                WHERE m.course_id = ? AND Doc_Chunk_fts MATCH ?
-                ORDER BY rank LIMIT ?
-                """,
-                (course_id, keywords, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
-                FROM Doc_Chunk_fts
-                JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
-                WHERE Doc_Chunk_fts MATCH ?
-                ORDER BY rank LIMIT ?
-                """,
-                (keywords, limit),
-            ).fetchall()
+    notice_filter = "AND m.file_type != 'notice'" if exclude_notice else ""
+    try:
+        with get_conn() as conn:
+            if course_id:
+                rows = conn.execute(
+                    f"""
+                    SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
+                    FROM Doc_Chunk_fts
+                    JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
+                    JOIN Material  m  ON m.material_id = dc.material_id
+                    WHERE m.course_id = ? {notice_filter} AND Doc_Chunk_fts MATCH ?
+                    ORDER BY rank LIMIT ?
+                    """,
+                    (course_id, keywords, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"""
+                    SELECT dc.chunk_id, dc.material_id, dc.page_ref, dc.content AS snippet
+                    FROM Doc_Chunk_fts
+                    JOIN Doc_Chunk dc ON dc.chunk_id = Doc_Chunk_fts.rowid
+                    JOIN Material  m  ON m.material_id = dc.material_id
+                    WHERE 1=1 {notice_filter} AND Doc_Chunk_fts MATCH ?
+                    ORDER BY rank LIMIT ?
+                    """,
+                    (keywords, limit),
+                ).fetchall()
+    except Exception:
+        return []
     return [dict(r) for r in rows]
 
 

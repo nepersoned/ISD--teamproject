@@ -13,6 +13,7 @@ from db.db import (
     init_schema, upsert_user, touch_sync,
     upsert_course, upsert_enrollment,
     upsert_material, clear_activities, upsert_activity,
+    upsert_notice_material, clear_notice_chunks, insert_doc_chunks,
 )
 from pipeline.chunker import chunk_material
 
@@ -89,16 +90,30 @@ def run_sync(lms_id: str = None, cookie_str: str = None) -> dict:
         # ── 학습 활동 ─────────────────────────────
         activities = scraper.get_activities(kjkey)
         print(f"      활동 {len(activities)}개")
-        clear_activities(user_id, course_id)   # 제출 완료된 항목 포함 전체 초기화
+        clear_activities(user_id, course_id)
         for act in activities:
+            desc = scraper.get_activity_detail(act.get("detail_url"))
             upsert_activity(
                 user_id=user_id,
                 course_id=course_id,
                 title=act["title"],
                 status=act["status"],
                 due_date=act["due_date"],
+                description=desc,
             )
             total_act += 1
+
+        # ── 공지사항 ──────────────────────────────
+        notices = scraper.get_notices(kjkey)
+        if notices:
+            notice_mid = upsert_notice_material(course_id)
+            clear_notice_chunks(notice_mid)
+            chunks = [
+                {"content": n["content"], "page_ref": int(n["artl_num"]) if n["artl_num"].isdigit() else 0, "chunk_index": i}
+                for i, n in enumerate(notices)
+            ]
+            insert_doc_chunks(notice_mid, chunks)
+            print(f"      공지사항 {len(notices)}개")
 
     print("\n[5/5] 동기화 완료 시각 기록...")
     touch_sync(user_id)
@@ -172,10 +187,11 @@ def run_sync_delta(lms_id: str = None, cookie_str: str = None) -> dict:
             print(f"  [{kjkey}] 활동 {len(activities)}개 확인")
             clear_activities(user_id, course_id)
             for act in activities:
+                desc = scraper.get_activity_detail(act.get("detail_url"))
                 upsert_activity(
                     user_id=user_id, course_id=course_id,
                     title=act["title"], status=act["status"],
-                    due_date=act["due_date"],
+                    due_date=act["due_date"], description=desc,
                 )
                 total_act += 1
 

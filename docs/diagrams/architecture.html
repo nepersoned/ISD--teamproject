@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>System Architecture — LMS AI Copilot</title>
+  <script src="./mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --accent: #6c8ef7;
+      --text: #e2e4f0;
+      --muted: #7a7d90;
+      --tag-bg: #1e2235;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar .title { font-size: .95rem; font-weight: 600; }
+    .topbar .sub   { font-size: .78rem; color: var(--muted); margin-left: auto; }
+    .tag {
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: .75rem;
+      padding: .25rem .75rem;
+      color: var(--muted);
+    }
+    .tag.hi { border-color: var(--accent); color: var(--accent); }
+    .tabnav {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+    }
+    .tabnav button {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      font-size: .85rem;
+      padding: .75rem 1.2rem;
+      cursor: pointer;
+      transition: .15s;
+    }
+    .tabnav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tabnav button:hover  { color: var(--text); }
+    .tab { display: none; padding: 1.5rem 2rem; }
+    .tab.active { display: block; }
+    .section-label {
+      font-size: .7rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem 2rem;
+      overflow-x: auto;
+    }
+    .card h2 {
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: .6rem;
+    }
+    .card p {
+      font-size: .82rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 1.2rem;
+    }
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem;
+      margin-bottom: 1.2rem;
+    }
+    .pill {
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: .71rem;
+      padding: .18rem .55rem;
+      color: var(--muted);
+    }
+    .pill b { color: var(--accent); }
+    .mermaid svg { background: transparent !important; min-width: 600px; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="title">LMS AI Copilot</span>
+  <span class="tag hi">System Architecture</span>
+  <span class="tag">HUFS e-Class</span>
+  <span class="tag">FastAPI</span>
+  <span class="tag">SQLite · FTS5</span>
+  <span class="tag">Groq API</span>
+  <span class="sub">ISD Team · 2026</span>
+</div>
+
+<div class="tabnav">
+  <button class="active" onclick="show('overview',this)">① System Overview</button>
+  <button onclick="show('ingest',this)">② Ingest Pipeline</button>
+  <button onclick="show('chat',this)">③ Chat / RAG Flow</button>
+</div>
+
+<!-- ───────────────────────────── ① Overview ───────────────────────────── -->
+<div id="tab-overview" class="tab active">
+  <div class="section-label">전체 시스템 — 6개 레이어</div>
+  <div class="card">
+    <h2>End-to-End System</h2>
+    <p>
+      Chrome Extension이 쿠키를 포착해 /sync로 전달 → Scraper가 e-Class에서 강의자료·활동을 수집.<br>
+      자료는 청크 분할 후 SQLite FTS5에 저장되고, 질문 시 스마트 라우팅으로 컨텍스트를 조합해 Groq(llama-3.3-70b)가 답변.<br>
+      체류 시간은 Personal_Log에 기록되고, /log 엔드포인트로 수집된다.
+    </p>
+    <div class="pills">
+      <span class="pill">Sync <b>POST /sync</b> · <b>POST /sync/delta</b></span>
+      <span class="pill">Chat <b>POST /chat</b> · <b>POST /chat/stream (SSE)</b> · <b>GET /chat/{session_id}</b> · <b>POST /chat/{id}/feedback</b></span>
+      <span class="pill">Log <b>POST /log</b> · <b>GET /log</b></span>
+      <span class="pill">Courses <b>GET /courses</b></span>
+    </div>
+    <div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"background": "#1a1d27", "primaryColor": "#252837", "primaryTextColor": "#e2e4f0", "lineColor": "#6c8ef7", "edgeLabelBackground": "#1a1d27", "clusterBkg": "#1e2235"}}}%%
+graph TB
+    subgraph EXT["Chrome Extension"]
+        UI["Sidebar UI"]
+        CK["Cookie Interceptor"]
+    end
+
+    subgraph API["FastAPI Backend"]
+        EP1["POST /sync\nPOST /sync/delta"]
+        EP2["POST /chat\nPOST /chat/stream (SSE)"]
+        EP3["GET /chat/{session_id}"]
+        EP4["POST /chat/{id}/feedback"]
+        EP5["POST /log"]
+        EP6["GET /courses"]
+    end
+
+    subgraph ECLASS["HUFS e-Class"]
+        AUTH["main_form.acl"]
+        MAT["Material 다운로드\nefile_download2.acl"]
+        ACT["Learning_Activity\nreport·project AJAX POST\ntest GET"]
+    end
+
+    subgraph PIPE["Ingest Pipeline"]
+        SCR["EClassScraper"]
+        CHK["chunker.py\nPDF·PPTX → Doc_Chunk\n+ FTS5 index"]
+    end
+
+    subgraph DB["SQLite"]
+        DB1["User · Course · Enrollment"]
+        DB2["Material · Doc_Chunk"]
+        DB3["Learning_Activity"]
+        DB4["Chat_Session · Chat_Log"]
+        DB5["Personal_Log"]
+    end
+
+    subgraph RAG["RAG Engine"]
+        ROUTE["Smart Router\nACTIVITY / MATERIAL KW"]
+        KW["Keyword Extractor\nllama-3.1-8b"]
+        FTS["FTS5 — Doc_Chunk"]
+        PB["Prompt Builder\nD-day 태그 계산"]
+        LLM["Groq API\nllama-3.3-70b → 8b fallback"]
+    end
+
+    CK -->|JSESSIONID| EP1
+    EP1 --> SCR --> AUTH
+    AUTH --> MAT & ACT
+    MAT --> CHK --> DB2
+    SCR --> DB1 & DB3
+
+    UI -->|query| EP2
+    EP2 --> ROUTE
+    ROUTE -->|활동 질문| DB3
+    ROUTE -->|자료 질문| KW --> FTS --> DB2
+    EP2 -->|Chat_Log| DB4
+    DB3 --> PB
+    DB4 --> PB
+    FTS --> PB
+    PB --> LLM --> UI
+    LLM -->|Chat_Log.sources| DB4
+    UI --> EP4 --> DB4
+    EP3 --> DB4
+    UI --> EP5 --> DB5
+    EP6 --> DB1
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── ② Ingest ───────────────────────────── -->
+<div id="tab-ingest" class="tab">
+  <div class="section-label">수집 · 저장 파이프라인</div>
+  <div class="card">
+    <h2>Ingest Pipeline — Cookie → SQLite</h2>
+    <p>
+      JSESSIONID 하나로 세션을 확립하고 KJKEY 단위로 과목 컨텍스트를 설정.<br>
+      강의자료는 다운로드 → 텍스트 추출 → 페이지 단위 청크 분할 → Doc_Chunk 저장.<br>
+      MD5 체크섬으로 재동기화 시 중복 저장을 방지. 활동은 동기화 전 clear_activities로 초기화해 e-Class와 일치를 보장.
+    </p>
+    <div class="pills">
+      <span class="pill">DB <b>User</b> lms_id · enc_session_cookie · last_sync_at</span>
+      <span class="pill">DB <b>Course</b> lms_url_id(KJKEY) · course_code · title</span>
+      <span class="pill">DB <b>Enrollment</b> user_id · course_id</span>
+      <span class="pill">DB <b>Material</b> title · file_type · file_path · checksum</span>
+      <span class="pill">DB <b>Doc_Chunk</b> content · page_ref · chunk_index · material_id</span>
+      <span class="pill">DB <b>Learning_Activity</b> title · status · due_date</span>
+    </div>
+    <div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"background": "#1a1d27", "primaryColor": "#252837", "primaryTextColor": "#e2e4f0", "lineColor": "#6c8ef7", "edgeLabelBackground": "#1a1d27", "clusterBkg": "#1e2235"}}}%%
+flowchart LR
+    A([JSESSIONID]) --> B[Cookie Injection]
+    B --> C[GET main_form.acl]
+    C --> D[(User)]
+    C --> E[과목 목록 파싱\nem.sub_open kj]
+
+    E --> F[POST eclass_room2.acl\nKJKEY 컨텍스트]
+    F --> G[(Course)]
+    F --> H[(Enrollment)]
+
+    F --> I[lecture_material_list.acl]
+    I --> J[list_file_list2.acl]
+    J --> K[efile_download2.acl\n파일 다운로드]
+    K --> L{Material\nchecksum 중복?}
+    L -- 신규 --> O[(Material)]
+    O --> M[chunker.py\n텍스트 추출 PDF · PPTX]
+    M --> N[페이지 단위 분할\nchunk_material]
+    N --> P[(Doc_Chunk\n+ FTS5 index)]
+    L -- 중복 --> Q([skip])
+
+    F --> R1[POST report_list.acl]
+    F --> R2[POST project_list.acl]
+    F --> R3[GET test_list_form.acl]
+    R1 & R2 & R3 --> CLR[clear_activities]
+    CLR --> S[(Learning_Activity)]
+
+    O --> T[touch_sync]
+    P --> T
+    S --> T
+    T --> U[(User.last_sync_at)]
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────── ③ Chat ───────────────────────────── -->
+<div id="tab-chat" class="tab">
+  <div class="section-label">질문 · 검색 · 생성 파이프라인</div>
+  <div class="card">
+    <h2>Chat / RAG Flow — Smart Routing → Groq</h2>
+    <p>
+      질문 키워드를 분석해 과제/마감 질문이면 Learning_Activity를, 강의자료 질문이면 Doc_Chunk FTS5를 검색.<br>
+      키워드 추출은 llama-3.1-8b-instant(토큰 절약), 최종 답변은 llama-3.3-70b-versatile(429 시 8b fallback).<br>
+      활동 목록에는 D-day 태그를 Python에서 직접 계산해 삽입. 피드백(👍/👎)은 Chat_Log.feedback_score에 반영.
+    </p>
+    <div class="pills">
+      <span class="pill">Router <b>ACTIVITY_KEYWORDS → Learning_Activity</b></span>
+      <span class="pill">Router <b>MATERIAL_KEYWORDS → FTS5 Doc_Chunk LIMIT 8</b></span>
+      <span class="pill">DB <b>Chat_Session</b> user_id · course_id · created_at</span>
+      <span class="pill">DB <b>Chat_Log</b> role · content · sources · keywords · feedback_score</span>
+      <span class="pill">sources <b>[{chunk_id, material_id, page_ref}]</b></span>
+    </div>
+    <div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"background": "#1a1d27", "primaryColor": "#252837", "primaryTextColor": "#e2e4f0", "lineColor": "#6c8ef7", "edgeLabelBackground": "#1a1d27", "clusterBkg": "#1e2235"}}}%%
+flowchart LR
+    A([POST /chat\nquery · course_id]) --> B
+
+    subgraph SESSION["세션"]
+        B[Chat_Session\n조회 / 생성]
+        B --> C[(Chat_Session)]
+        B --> D[Chat_Log 이력\n조회]
+        D --> E[(Chat_Log)]
+    end
+
+    subgraph SEARCH["스마트 라우팅 · 검색"]
+        A --> RT{ACTIVITY\nKEYWORDS?}
+        RT -- 과제/마감 질문 --> ACT2[(Learning_Activity\nD-day 태그 계산)]
+        RT -- 강의자료 질문 --> F[Keyword Extractor\nllama-3.1-8b]
+        F --> G[Doc_Chunk\nFTS5 MATCH LIMIT 8]
+        G --> H[(Doc_Chunk)]
+        G --> I[top-k Doc_Chunk\nchunk_id · page_ref]
+    end
+
+    subgraph BUILD["Prompt 조립"]
+        E --> J[Prompt Builder]
+        I --> J
+        ACT2 --> J
+        J --> K[system + context\n+ D-day + history + query]
+    end
+
+    subgraph GEN["생성 · 저장 (SSE 스트리밍)"]
+        K --> L[Groq API\nllama-3.3-70b\n→ 8b fallback on 429]
+        L -->|stream=True| LS[SSE delta chunks\ntext/event-stream]
+        LS --> O([Extension 실시간 렌더링])
+        L --> M[(Chat_Log\nrole=user)]
+        L --> N[(Chat_Log\nrole=assistant\nsources · keywords)]
+    end
+
+    subgraph FB["피드백"]
+        O --> P[POST /feedback]
+        P --> Q[(Chat_Log\nfeedback_score)]
+    end
+    </div>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
+
+  function show(tab, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tabnav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>

@@ -260,52 +260,191 @@ class EClassScraper:
         return activities
 
     def _parse_activity_list(self, content: bytes, kind: str) -> list[dict]:
-        soup  = BeautifulSoup(content, "lxml")
+        soup = BeautifulSoup(content, "lxml")
+        rows = soup.find_all("tr")
 
-        rows = soup.select("table tbody tr") or soup.select("table tr")
-
+        BADGE_RE = re.compile(
+            r'\s*(퀴즈|온라인\s*시험|오프라인\s*시험|온라인|오프라인|'
+            r'팀장제출|개별제출|팀\s*미지정|진행중|종료)\s*$'
+        )
         items = []
         for row in rows:
             cols = row.find_all("td")
             if len(cols) < 2:
                 continue
-            # 제목: 링크(<a>) 직접 텍스트 우선, 숫자만인 경우는 번호 컬럼이므로 스킵
-            BADGE_RE = re.compile(
-                r'\s*(퀴즈|온라인\s*시험|오프라인\s*시험|퀴즈온라인\s*시험|'
-                r'퀴즈오프라인\s*시험|온라인|오프라인|팀장제출|개별제출|'
-                r'팀\s*미지정|진행중|종료)\s*$'
-            )
+
+            # ── 제목 + detail URL: pageMove() 가 있는 <td onclick> ──
             title = ""
+            detail_url = None
             for col in cols:
-                a = col.find("a")
-                if a:
-                    # 직접 텍스트 노드만 사용 (자식 span 뱃지 제외)
-                    raw = "".join(a.find_all(string=True, recursive=False)).strip()
+                onclick = col.get("onclick", "")
+                m = re.search(r"pageMove\s*\(\s*['\"]([^'\"]+)['\"]", onclick)
+                if m:
+                    detail_url = urljoin(BASE_URL, m.group(1))
+                    # 제목은 .subjt_top 또는 <a> 텍스트
+                    st = col.select_one(".subjt_top")
+                    raw = st.get_text(strip=True) if st else col.find("a") and col.find("a").get_text(strip=True) or ""
                     if not raw:
-                        raw = a.get_text(strip=True)
-                    raw = BADGE_RE.sub("", raw).strip()
-                    if len(raw) > 1 and not raw.isdigit():
-                        title = raw
-                        break
-                else:
-                    t = col.get_text(strip=True)
-                    if len(t) > 1 and not t.isdigit():
-                        title = t
-                        break
+                        raw = col.get_text(strip=True)
+                    title = BADGE_RE.sub("", raw).strip()
+                    break
+
+            # pageMove 없으면 기존 방식 fallback
+            if not title:
+                for col in cols:
+                    a = col.find("a")
+                    if a:
+                        raw = "".join(a.find_all(string=True, recursive=False)).strip() or a.get_text(strip=True)
+                        raw = BADGE_RE.sub("", raw).strip()
+                        if len(raw) > 1 and not raw.isdigit():
+                            title = raw
+                            break
+                    else:
+                        t = col.get_text(strip=True)
+                        if len(t) > 1 and not t.isdigit():
+                            title = t
+                            break
+
             if not title:
                 continue
-            # 날짜 패턴(YYYY-MM-DD 또는 YYYY.MM.DD)이 있는 열에서 마감일 추출
+
+            # ── 마감일 ──
             due_date = None
             for col in reversed(cols):
                 due_date = self._parse_date(col.get_text(strip=True))
                 if due_date:
                     break
+
             items.append({
-                "title":    f"[{kind}] {title}",
-                "status":   self._parse_status(row),
-                "due_date": due_date,
+                "title":      f"[{kind}] {title}",
+                "status":     self._parse_status(row),
+                "due_date":   due_date,
+                "detail_url": detail_url,
             })
         return items
+
+    def _extract_detail_url(self, a_tag, kind: str) -> str | None:
+        """<a> 태그에서 상세 페이지 URL 추출 — 다양한 e-Class 패턴 처리."""
+        href    = a_tag.get("href", "")
+        onclick = a_tag.get("onclick", "")
+        combined = href + " " + onclick
+
+        # 1) href가 실제 /ilos 경로
+        if href and href.startswith("/ilos"):
+            return urljoin(BASE_URL, href)
+
+        # 2) location.href 패턴
+        m = re.search(r"location\.href\s*=\s*['\"]([^'\"]+)['\"]", combined)
+        if m:
+            return urljoin(BASE_URL, m.group(1))
+
+        # 3) goSubjectPage('KJKEY', 'ARTL_NUM', ...) — 알림과 동일 패턴
+        m = re.search(r"goSubjectPage\s*\(\s*['\"]?(\w+)['\"]?\s*,\s*['\"]?(\w+)['\"]?", combined)
+        if m:
+            artl_num = m.group(2)
+            return self._build_detail_url(kind, artl_num)
+
+        # 4) 모든 JS 함수 — 두 번째 인자가 숫자인 경우 ARTL_NUM으로 취급
+        m = re.search(r"\w+\s*\(['\"]?\w+['\"]?\s*,\s*['\"]?(\d{4,})['\"]?", combined)
+        if m:
+            return self._build_detail_url(kind, m.group(1))
+
+        # 5) 함수 첫 번째 인자가 숫자
+        m = re.search(r"\w+\s*\(\s*['\"]?(\d{4,})['\"]?", combined)
+        if m:
+            return self._build_detail_url(kind, m.group(1))
+
+        return None
+
+    def _build_detail_url(self, kind: str, artl_num: str) -> str | None:
+        path_map = {
+            "assignment": f"/ilos/st/course/report_detail_form.acl?ud={self.lms_id}&ky={self._current_kjkey}&ARTL_NUM={artl_num}&encoding=utf-8",
+            "project":    f"/ilos/st/course/project_detail_form.acl?ud={self.lms_id}&ky={self._current_kjkey}&ARTL_NUM={artl_num}&encoding=utf-8",
+            "quiz":       f"/ilos/st/course/test_detail_form.acl?ud={self.lms_id}&ky={self._current_kjkey}&ARTL_NUM={artl_num}&encoding=utf-8",
+        }
+        path = path_map.get(kind)
+        return urljoin(BASE_URL, path) if path else None
+
+    def get_activity_detail(self, url: str) -> str | None:
+        """상세 페이지에서 과제/프로젝트 설명 텍스트 추출."""
+        if not url:
+            return None
+        try:
+            resp = self.session.get(url, timeout=15)
+            resp.raise_for_status()
+            # 세션 만료 체크 (리다이렉트만)
+            if "login_form" in resp.url or "main_form" in resp.url:
+                return None
+            soup = BeautifulSoup(resp.content, "lxml")
+
+            # 우선순위 순 셀렉터
+            for sel in [
+                ".view_cont", ".cont_area", ".board_view_cont",
+                "td.view_cont", "div.content", ".detail_content",
+                "td[class*='cont']", "div[class*='view']", "div[class*='detail']",
+                "#contentArea", ".contentArea",
+            ]:
+                el = soup.select_one(sel)
+                if el:
+                    text = el.get_text(" ", strip=True)
+                    if len(text) > 20:
+                        return text[:1500]
+
+            # fallback: 가장 긴 <td>
+            tds = [t for t in soup.find_all("td") if len(t.get_text(strip=True)) > 30]
+            if tds:
+                longest = max(tds, key=lambda t: len(t.get_text(strip=True)))
+                text = longest.get_text(" ", strip=True)
+                if len(text) > 20:
+                    return text[:1500]
+        except Exception:
+            pass
+        return None
+
+    # ------------------------------------------------------------------
+    # 공지사항 (notice_list.acl)
+    # ------------------------------------------------------------------
+
+    def get_notices(self, kjkey: str) -> list[dict]:
+        """공지사항 목록 + 본문 수집. [{title, content, artl_num}]"""
+        if not self._enter_course(kjkey):
+            return []
+        try:
+            resp = self.session.post(
+                f"{BASE_URL}/ilos/st/course/notice_list.acl",
+                data={"start": "0", "display": "1", "SCH_VALUE": "",
+                      "ud": self.lms_id, "ky": kjkey, "encoding": "utf-8"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+        except Exception:
+            return []
+
+        soup = BeautifulSoup(resp.content, "lxml")
+        notices = []
+        for row in soup.find_all("tr"):
+            for col in row.find_all("td"):
+                onclick = col.get("onclick", "")
+                m = re.search(r"pageMove\s*\(\s*['\"]([^'\"]+)['\"]", onclick)
+                if not m:
+                    continue
+                detail_url = urljoin(BASE_URL, m.group(1))
+                artl_m = re.search(r"ARTL_NUM=(\d+)", detail_url)
+                artl_num = artl_m.group(1) if artl_m else ""
+
+                st = col.select_one("div:not(.subjt_b)")
+                title = st.get_text(strip=True) if st else col.get_text(strip=True)[:80]
+                title = title.strip()
+
+                content = self.get_activity_detail(detail_url) or ""
+                if title:
+                    notices.append({
+                        "title":    title,
+                        "content":  f"[공지] {title}\n{content}",
+                        "artl_num": artl_num,
+                    })
+                break  # td 하나만
+        return notices
 
     # ------------------------------------------------------------------
     # 알림 (notification_list.acl)
@@ -376,11 +515,19 @@ class EClassScraper:
 
     @staticmethod
     def _parse_status(row) -> str:
-        text = row.get_text().lower()
-        if "제출완료" in text or "완료" in text:
-            return "completed"
-        if "미제출" in text or "미완료" in text:
+        # 1) <img alt="미제출"> / <img alt="제출"> 패턴 (e-Class 실제 구조)
+        for img in row.find_all("img"):
+            alt = img.get("alt", "").strip()
+            if any(kw in alt for kw in ("미제출", "미완료", "미응시")):
+                return "pending"
+            if any(kw in alt for kw in ("제출", "완료", "응시")):
+                return "completed"
+        # 2) 텍스트 fallback — 부정 먼저
+        text = row.get_text()
+        if any(kw in text for kw in ("미제출", "미완료", "미응시", "미참여")):
             return "pending"
+        if any(kw in text for kw in ("제출완료", "완료", "응시완료", "출석완료")):
+            return "completed"
         return "unknown"
 
     @staticmethod

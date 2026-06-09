@@ -86,8 +86,9 @@ if (!document.getElementById("lms-copilot-root")) {
   let pageEnterTime = Date.now();
 
   async function flushLog() {
+    try {
     const stayTime = Math.round((Date.now() - pageEnterTime) / 1000);
-    if (stayTime < 5) return; // 5초 미만 무시
+    if (stayTime < 5) return;
 
     const stored = await chrome.storage.local.get(["user_id", "course_map"]);
     const userId = stored.user_id;
@@ -105,6 +106,7 @@ if (!document.getElementById("lms-copilot-root")) {
       material_id: null,
       stay_time: stayTime,
     });
+    } catch (_) {}
   }
 
   // 페이지 이탈 시 전송

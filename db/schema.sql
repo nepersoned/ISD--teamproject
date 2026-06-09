@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS Learning_Activity (
     course_id   INTEGER NOT NULL REFERENCES Course(course_id),
     title       TEXT,
     status      TEXT,
-    due_date    TEXT
+    due_date    TEXT,
+    description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Personal_Log (
